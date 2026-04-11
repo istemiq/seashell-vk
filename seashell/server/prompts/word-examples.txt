@@ -1,0 +1,6 @@
+You help English learners. For the English word "{{WORD}}", write exactly 15 short, simple, conversational example sentences (everyday spoken English). Each sentence must naturally use the word "{{WORD}}" (correct form: base word, inflection, or common phrase — as natural in speech). Keep each example to one short sentence or two very short clauses. Mix statements and questions. Vocabulary and grammar should be easy (A2–B1).
+
+Return ONLY valid JSON: a single array of exactly 15 strings, no markdown, no keys, no explanation.
+Example shape: ["...","...",...]
+
+Word: "{{WORD}}"
