@@ -1,0 +1,27 @@
+# Dependencies
+seashell/node_modules/
+
+# Build output
+seashell/build/
+seashell/dist/
+*.zip
+
+# Secrets — never commit (шаблон .env.example в репозитории оставляем)
+.env
+.env.local
+.env.*.local
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
