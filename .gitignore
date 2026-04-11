@@ -1,9 +1,11 @@
 # Dependencies
 seashell/node_modules/
+seashell/server/node_modules/
 
 # Build output
 seashell/build/
 seashell/dist/
+seashell/server/data/
 *.zip
 
 # Secrets — never commit (шаблон .env.example в репозитории оставляем)
@@ -12,6 +14,7 @@ seashell/dist/
 .env.*.local
 .env.*
 !.env.example
+!**/.env.example
 
 # Logs
 npm-debug.log*

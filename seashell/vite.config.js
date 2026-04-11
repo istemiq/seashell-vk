@@ -39,6 +39,12 @@ export default defineConfig({
   base: './',
 
   server: {
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3001',
+        changeOrigin: true,
+      },
+    },
     // Reverse tunnels (localhost.run и т.п.) меняют Host — иначе Vite отвечает "Blocked request"
     allowedHosts: true,
     host: true,
