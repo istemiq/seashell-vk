@@ -245,3 +245,106 @@ export async function generateWordExamples(word) {
     examples: examples.slice(0, 15),
   };
 }
+
+function loadPracticeTurnTemplate() {
+  return fs.readFileSync(path.join(__dirname, 'prompts', 'practice-turn.txt'), 'utf8');
+}
+
+function buildPracticePrompt(userText, historyLines) {
+  const h =
+    !historyLines?.length
+      ? '(empty)'
+      : historyLines
+          .map((m) => `${m.role}: ${m.text}`)
+          .join('\n')
+          .slice(0, 4000);
+  return loadPracticeTurnTemplate()
+    .replace('{{USER_TEXT}}', String(userText).trim().slice(0, 4000))
+    .replace('{{HISTORY}}', h);
+}
+
+function extractJsonObject(text) {
+  const t = text.trim();
+  try {
+    const parsed = JSON.parse(t);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+  } catch {
+    // fallthrough
+  }
+  const start = t.indexOf('{');
+  const end = t.lastIndexOf('}');
+  if (start === -1 || end <= start) {
+    throw new Error('No JSON object in model response');
+  }
+  return JSON.parse(t.slice(start, end + 1));
+}
+
+function normalizePracticeTurn(obj) {
+  const echo = String(obj.echo ?? obj.user ?? '').trim();
+  const reply = String(obj.reply ?? obj.answer ?? '').trim();
+  let corrections = obj.corrections;
+  if (corrections === null || corrections === undefined || corrections === 'null') {
+    corrections = null;
+  } else {
+    corrections = String(corrections).trim() || null;
+  }
+  if (!reply) {
+    throw new Error('Empty reply in practice response');
+  }
+  return { echo: echo || null, corrections, reply };
+}
+
+/** Один ход диалога: эхо реплики, правки, ответ собеседника. */
+export async function generatePracticeTurn({ userText, history }) {
+  const model = process.env.GIGACHAT_MODEL_NAME || 'GigaChat';
+  const token = await getAccessToken();
+  const historyLines = Array.isArray(history)
+    ? history
+        .filter((m) => m && typeof m.text === 'string')
+        .slice(-8)
+        .map((m) => ({
+          role: m.role === 'assistant' ? 'Assistant' : 'User',
+          text: m.text.slice(0, 800),
+        }))
+    : [];
+  const userContent = buildPracticePrompt(userText, historyLines);
+
+  let res;
+  try {
+    res = await gigaFetch(CHAT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You output only valid JSON when asked. No markdown fences. Follow the user format exactly.',
+          },
+          { role: 'user', content: userContent },
+        ],
+        temperature: 0.65,
+      }),
+    });
+  } catch (e) {
+    throw mapNetErr(e, 'chat');
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(`GigaChat chat: ${res.status} ${JSON.stringify(data)}`);
+  }
+
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content || typeof content !== 'string') {
+    throw new Error('Empty GigaChat response');
+  }
+
+  const raw = extractJsonObject(content);
+  return normalizePracticeTurn(raw);
+}

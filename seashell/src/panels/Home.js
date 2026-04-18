@@ -10,7 +10,7 @@ export const Home = ({ id, fetchedUser }) => {
     <Panel id={id}>
       <PanelHeader>Главная</PanelHeader>
       {fetchedUser && (
-        <Group header={<Header size="s">User Data Fetched with VK Bridge</Header>}>
+        <Group header={<Header size="s">Профиль</Header>}>
           <Cell before={photo_200 && <Avatar src={photo_200} />} subtitle={city?.title}>
             {`${first_name} ${last_name}`}
           </Cell>

@@ -9,7 +9,7 @@ import {
   deleteWord,
   findWordByLemma,
 } from './db.js';
-import { generateWordExamples, tlsInsecure } from './gigachat.js';
+import { generateWordExamples, generatePracticeTurn, tlsInsecure } from './gigachat.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -45,6 +45,25 @@ function normalizeWord(w) {
     .trim()
     .replace(/\s+/g, ' ');
 }
+
+app.post('/api/practice/turn', async (req, res) => {
+  const userText = normalizeWord(req.body?.userText ?? req.body?.text ?? '');
+  if (!userText || userText.length > 4000) {
+    return res.status(400).json({ error: 'Invalid text' });
+  }
+  const history = Array.isArray(req.body?.history) ? req.body.history : [];
+  try {
+    const turn = await generatePracticeTurn({ userText, history });
+    res.json({
+      echo: turn.echo || userText,
+      corrections: turn.corrections,
+      reply: turn.reply,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(502).json({ error: e.message || 'Generation failed' });
+  }
+});
 
 app.get('/api/words', (req, res) => {
   try {

@@ -23,9 +23,9 @@ import * as api from '../api/dictionaryApi.js';
 import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
 import { withTimeout } from '../utils/withTimeout.js';
 
-/** Вне VK bridge часто не отвечает — без таймаута вечный спиннер. */
+/** Словарь: добавление слова, генерация примеров и переводов на бэкенде, карусель примеров. */
+
 const BRIDGE_GET_USER_MS = 8000;
-/** Локальный тест в Chrome (не WebView): id для API, если bridge не дал пользователя. */
 const DEV_FALLBACK_VK_USER_ID = Number(import.meta.env.VITE_DEV_VK_USER_ID) || 1000001;
 
 function speakEnglish(text) {
@@ -37,7 +37,7 @@ function speakEnglish(text) {
   window.speechSynthesis.speak(u);
 }
 
-/** Текст/перевод из API: иногда приходит вложенный объект; в БД могла сохраниться строка "[object Object]". */
+/** Достаёт строку из поля примера (старый баг мог сохранить «[object Object]»). */
 function lineFromExampleField(val) {
   if (val == null || val === '') return '';
   if (typeof val === 'string') {
@@ -77,6 +77,7 @@ export const Dictionary = ({ id }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [exampleIdx, setExampleIdx] = useState(0);
 
+  // Fallback vk_user_id для API вне VK WebView.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -219,6 +220,7 @@ export const Dictionary = ({ id }) => {
         </Group>
       )}
 
+      {/* Список слов и форма добавления */}
       {!selectedId && vkUserId && (
         <>
           <Group header={<Header mode="secondary">Новое слово</Header>}>
@@ -241,10 +243,9 @@ export const Dictionary = ({ id }) => {
               >
                 Добавить слово
               </Button>
-                <Footnote style={{ marginTop: 8 }}>
-                  Для каждого примера сохраняются английская фраза и русский перевод. «Другой пример» переключает уже
-                  сохранённые карточки, без новых запросов.
-                </Footnote>
+              <Footnote style={{ marginTop: 8 }}>
+                Подберём примеры и переводы автоматически. «Другой пример» переключает сохранённые карточки.
+              </Footnote>
             </FormItem>
           </Group>
 
@@ -285,6 +286,7 @@ export const Dictionary = ({ id }) => {
         </>
       )}
 
+      {/* Карточка слова: значение, примеры, озвучка */}
       {selectedId && (
         <Group>
           {detailLoading && (
@@ -300,8 +302,7 @@ export const Dictionary = ({ id }) => {
                   <Text style={{ marginTop: 6, lineHeight: 1.45 }}>{detail.gloss_ru}</Text>
                 ) : (
                   <Footnote style={{ marginTop: 6 }}>
-                    Краткого перевода слова в базе нет — нажми «Перегенерировать примеры», чтобы подтянуть значение вместе с
-                    примерами.
+                    Краткого перевода пока нет — нажми «Обновить примеры» ниже.
                   </Footnote>
                 )}
                 <Separator style={{ margin: '12px 0' }} />
@@ -313,13 +314,12 @@ export const Dictionary = ({ id }) => {
                     {currentExampleRu ? (
                       <Text style={{ marginTop: 12, lineHeight: 1.45, opacity: 0.88 }}>{currentExampleRu}</Text>
                     ) : (
-                      <Footnote style={{ marginTop: 10 }}>Перевода нет (слово добавлено до обновления).</Footnote>
+                      <Footnote style={{ marginTop: 10 }}>Перевода этой карточки нет.</Footnote>
                     )}
                   </>
                 ) : (
                   <Footnote>
-                    Текст в базе битый (раньше модель сохранила ошибку). Нажми «Перегенерировать примеры» ниже или удали
-                    слово и добавь снова.
+                    Не удалось показать пример. Нажми «Обновить примеры» или удали слово и добавь снова.
                   </Footnote>
                 )}
               </Box>
@@ -332,7 +332,7 @@ export const Dictionary = ({ id }) => {
                   mode="secondary"
                   onClick={refreshExamples}
                 >
-                  Перегенерировать примеры (GigaChat)
+                  Обновить примеры
                 </Button>
                 <Button
                   size="l"
@@ -340,15 +340,12 @@ export const Dictionary = ({ id }) => {
                   disabled={!currentExampleText || refreshing}
                   onClick={() => speakEnglish(currentExampleText)}
                 >
-                  Озвучить (браузер, бесплатно)
+                  Прослушать
                 </Button>
                 <Button size="l" stretched mode="secondary" disabled={refreshing} onClick={nextExample}>
                   Другой пример
                 </Button>
               </Box>
-              <Footnote style={{ marginTop: 12 }}>
-                Озвучка — Web Speech API в устройстве; для продакшена позже можно подключить облачный TTS.
-              </Footnote>
             </>
           )}
         </Group>
