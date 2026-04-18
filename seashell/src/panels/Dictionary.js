@@ -9,9 +9,8 @@ import {
   Cell,
   Button,
   Input,
-  FormLayout,
   FormItem,
-  Div,
+  Box,
   Spinner,
   Footnote,
   Text,
@@ -21,6 +20,13 @@ import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import PropTypes from 'prop-types';
 
 import * as api from '../api/dictionaryApi.js';
+import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
+import { withTimeout } from '../utils/withTimeout.js';
+
+/** Вне VK bridge часто не отвечает — без таймаута вечный спиннер. */
+const BRIDGE_GET_USER_MS = 8000;
+/** Локальный тест в Chrome (не WebView): id для API, если bridge не дал пользователя. */
+const DEV_FALLBACK_VK_USER_ID = Number(import.meta.env.VITE_DEV_VK_USER_ID) || 1000001;
 
 function speakEnglish(text) {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -31,9 +37,33 @@ function speakEnglish(text) {
   window.speechSynthesis.speak(u);
 }
 
+/** Текст/перевод из API: иногда приходит вложенный объект; в БД могла сохраниться строка "[object Object]". */
+function lineFromExampleField(val) {
+  if (val == null || val === '') return '';
+  if (typeof val === 'string') {
+    const s = val.trim();
+    if (s === '[object Object]') return '';
+    return s;
+  }
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+  if (typeof val === 'object') {
+    const nested =
+      val.text ??
+      val.en ??
+      val.english ??
+      val.sentence ??
+      val.example ??
+      val.phrase ??
+      val.translation ??
+      val.ru;
+    if (nested !== undefined && nested !== val) return lineFromExampleField(nested);
+  }
+  return '';
+}
+
 export const Dictionary = ({ id }) => {
   const routeNavigator = useRouteNavigator();
-  const [vkUserId, setVkUserId] = useState(null);
+  const [vkUserId, setVkUserId] = useState(() => getVkUserIdFromLocation());
   const [words, setWords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -44,16 +74,28 @@ export const Dictionary = ({ id }) => {
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [exampleIdx, setExampleIdx] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (getVkUserIdFromLocation()) {
+        return;
+      }
       try {
-        const u = await bridge.send('VKWebAppGetUserInfo');
-        if (!cancelled && u?.id) setVkUserId(u.id);
+        const u = await withTimeout(bridge.send('VKWebAppGetUserInfo'), BRIDGE_GET_USER_MS);
+        if (cancelled || !u?.id) return;
+        api.setVkUserIdFallback(u.id);
+        setVkUserId((prev) => prev ?? u.id);
       } catch {
-        if (!cancelled) setError('Не удалось получить профиль VK');
+        if (cancelled) return;
+        if (!bridge.isWebView()) {
+          api.setVkUserIdFallback(DEV_FALLBACK_VK_USER_ID);
+          setVkUserId(DEV_FALLBACK_VK_USER_ID);
+        } else {
+          setError('Не удалось получить профиль VK');
+        }
       }
     })();
     return () => {
@@ -66,7 +108,7 @@ export const Dictionary = ({ id }) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.fetchWords(vkUserId);
+      const data = await api.fetchWords();
       setWords(data.words || []);
     } catch (e) {
       setError(e.message || 'Ошибка загрузки');
@@ -86,7 +128,7 @@ export const Dictionary = ({ id }) => {
     setExampleIdx(0);
     setError(null);
     try {
-      const d = await api.fetchWord(vkUserId, wordId);
+      const d = await api.fetchWord(wordId);
       setDetail(d);
     } catch (e) {
       setError(e.message || 'Ошибка');
@@ -108,7 +150,7 @@ export const Dictionary = ({ id }) => {
     setAdding(true);
     setError(null);
     try {
-      await api.addWord(vkUserId, w);
+      await api.addWord(w);
       setNewWord('');
       await loadList();
     } catch (e) {
@@ -118,11 +160,27 @@ export const Dictionary = ({ id }) => {
     }
   };
 
+  const refreshExamples = async () => {
+    if (!selectedId || !vkUserId) return;
+    setRefreshing(true);
+    setError(null);
+    try {
+      const d = await api.refreshWordExamples(selectedId);
+      setDetail(d);
+      setExampleIdx(0);
+      await loadList();
+    } catch (e) {
+      setError(e.message || 'Не удалось обновить примеры');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const removeWord = async (wordId, e) => {
     e?.stopPropagation?.();
     if (!vkUserId || !window.confirm('Удалить слово и все примеры?')) return;
     try {
-      await api.removeWord(vkUserId, wordId);
+      await api.removeWord(wordId);
       if (selectedId === wordId) closeWord();
       await loadList();
     } catch (err) {
@@ -135,7 +193,9 @@ export const Dictionary = ({ id }) => {
     setExampleIdx((i) => (i + 1) % detail.examples.length);
   };
 
-  const currentExampleText = detail?.examples?.[exampleIdx]?.text || '';
+  const ex = detail?.examples?.[exampleIdx];
+  const currentExampleText = lineFromExampleField(ex?.text);
+  const currentExampleRu = lineFromExampleField(ex?.translation);
 
   const headerTitle = selectedId ? (detail?.word || '…') : 'Словарь';
 
@@ -146,59 +206,58 @@ export const Dictionary = ({ id }) => {
       </PanelHeader>
 
       {!vkUserId && !error && (
-        <Div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
+        <Box style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
           <Spinner size="l" />
-        </Div>
+        </Box>
       )}
 
       {error && (
         <Group>
-          <Div>
+          <Box>
             <Text>{error}</Text>
-          </Div>
+          </Box>
         </Group>
       )}
 
       {!selectedId && vkUserId && (
         <>
           <Group header={<Header mode="secondary">Новое слово</Header>}>
-            <FormLayout>
-              <FormItem top="Английское слово или фраза">
-                <Input
-                  value={newWord}
-                  onChange={(e) => setNewWord(e.target.value)}
-                  placeholder="например: matter"
-                  disabled={adding}
-                />
-              </FormItem>
-              <FormItem>
-                <Button
-                  size="l"
-                  stretched
-                  loading={adding}
-                  disabled={adding || !newWord.trim()}
-                  onClick={addWord}
-                >
-                  Добавить и сгенерировать 15 примеров
-                </Button>
+            <FormItem top="Английское слово или фраза">
+              <Input
+                value={newWord}
+                onChange={(e) => setNewWord(e.target.value)}
+                placeholder="например: matter"
+                disabled={adding}
+              />
+            </FormItem>
+            <FormItem>
+              <Button
+                type="button"
+                size="l"
+                stretched
+                loading={adding}
+                disabled={!newWord.trim()}
+                onClick={addWord}
+              >
+                Добавить слово
+              </Button>
                 <Footnote style={{ marginTop: 8 }}>
-                  Примеры создаёт GigaChat один раз и сохраняются в базе. «Другой пример» переключает без новых запросов к
-                  модели.
+                  Для каждого примера сохраняются английская фраза и русский перевод. «Другой пример» переключает уже
+                  сохранённые карточки, без новых запросов.
                 </Footnote>
-              </FormItem>
-            </FormLayout>
+            </FormItem>
           </Group>
 
           <Group header={<Header mode="secondary">Мои слова</Header>}>
             {loading && (
-              <Div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
+              <Box style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
                 <Spinner />
-              </Div>
+              </Box>
             )}
             {!loading && words.length === 0 && (
-              <Div>
+              <Box>
                 <Text>Пока пусто — добавь первое слово выше.</Text>
-              </Div>
+              </Box>
             )}
             {!loading &&
               words.map((w) => (
@@ -229,25 +288,64 @@ export const Dictionary = ({ id }) => {
       {selectedId && (
         <Group>
           {detailLoading && (
-            <Div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
+            <Box style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
               <Spinner size="l" />
-            </Div>
+            </Box>
           )}
           {!detailLoading && detail && (
             <>
-              <Div>
+              <Box>
+                <Text weight="2">Значение слова</Text>
+                {detail.gloss_ru ? (
+                  <Text style={{ marginTop: 6, lineHeight: 1.45 }}>{detail.gloss_ru}</Text>
+                ) : (
+                  <Footnote style={{ marginTop: 6 }}>
+                    Краткого перевода слова в базе нет — нажми «Перегенерировать примеры», чтобы подтянуть значение вместе с
+                    примерами.
+                  </Footnote>
+                )}
+                <Separator style={{ margin: '12px 0' }} />
                 <Text weight="2">Пример {exampleIdx + 1} из {detail.examples.length}</Text>
                 <Separator style={{ margin: '12px 0' }} />
-                <Text style={{ lineHeight: 1.45 }}>{currentExampleText}</Text>
-              </Div>
-              <Div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-                <Button size="l" stretched onClick={() => speakEnglish(currentExampleText)}>
+                {currentExampleText ? (
+                  <>
+                    <Text style={{ lineHeight: 1.45 }}>{currentExampleText}</Text>
+                    {currentExampleRu ? (
+                      <Text style={{ marginTop: 12, lineHeight: 1.45, opacity: 0.88 }}>{currentExampleRu}</Text>
+                    ) : (
+                      <Footnote style={{ marginTop: 10 }}>Перевода нет (слово добавлено до обновления).</Footnote>
+                    )}
+                  </>
+                ) : (
+                  <Footnote>
+                    Текст в базе битый (раньше модель сохранила ошибку). Нажми «Перегенерировать примеры» ниже или удали
+                    слово и добавь снова.
+                  </Footnote>
+                )}
+              </Box>
+              <Box style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                <Button
+                  size="l"
+                  stretched
+                  loading={refreshing}
+                  disabled={refreshing}
+                  mode="secondary"
+                  onClick={refreshExamples}
+                >
+                  Перегенерировать примеры (GigaChat)
+                </Button>
+                <Button
+                  size="l"
+                  stretched
+                  disabled={!currentExampleText || refreshing}
+                  onClick={() => speakEnglish(currentExampleText)}
+                >
                   Озвучить (браузер, бесплатно)
                 </Button>
-                <Button size="l" stretched mode="secondary" onClick={nextExample}>
+                <Button size="l" stretched mode="secondary" disabled={refreshing} onClick={nextExample}>
                   Другой пример
                 </Button>
-              </Div>
+              </Box>
               <Footnote style={{ marginTop: 12 }}>
                 Озвучка — Web Speech API в устройстве; для продакшена позже можно подключить облачный TTS.
               </Footnote>

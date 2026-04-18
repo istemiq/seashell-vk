@@ -1,6 +1,19 @@
-You help English learners. For the English word "{{WORD}}", write exactly 15 short, simple, conversational example sentences (everyday spoken English). Each sentence must naturally use the word "{{WORD}}" (correct form: base word, inflection, or common phrase — as natural in speech). Keep each example to one short sentence or two very short clauses. Mix statements and questions. Vocabulary and grammar should be easy (A2–B1).
+You help English learners who speak Russian. For the English word or phrase "{{WORD}}":
 
-Return ONLY valid JSON: a single array of exactly 15 strings, no markdown, no keys, no explanation.
-Example shape: ["...","...",...]
+1) Give a short Russian gloss: what "{{WORD}}" means for a learner (one line; if several common senses, separate with semicolons). Field name: "glossRu".
+
+2) Write exactly 15 short, simple, conversational example sentences (everyday spoken English). Each sentence must naturally use "{{WORD}}" (correct form: base word, inflection, or common phrase). Keep each example to one short sentence or two very short clauses. Mix statements and questions. Vocabulary and grammar should be easy (A2–B1).
+
+For EACH example item give:
+- "text": the English sentence only (one plain string)
+- "translation": natural Russian translation of that sentence (one plain string; not word-by-word if it sounds awkward)
+
+Do not nest objects inside "text", "translation", or "glossRu" — only string values.
+
+Return ONLY valid JSON — one object, no markdown, no extra keys, no explanation.
+Shape:
+{"glossRu":"...","examples":[{"text":"...","translation":"..."},...]}
+
+The "examples" array must have exactly 15 objects.
 
 Word: "{{WORD}}"

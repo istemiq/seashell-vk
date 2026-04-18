@@ -5,17 +5,9 @@ import { useActiveVkuiLocation } from '@vkontakte/vk-mini-apps-router';
 
 import { Persik, Home, Dictionary, Practice, Readme } from './panels';
 import { DEFAULT_VIEW_PANELS } from './routes';
+import { withTimeout } from './utils/withTimeout.js';
 
 const BRIDGE_USER_INFO_MS = 8000;
-
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('bridge-timeout')), ms);
-    }),
-  ]);
-}
 
 export const App = () => {
   const { panel: activePanel = DEFAULT_VIEW_PANELS.HOME } = useActiveVkuiLocation();

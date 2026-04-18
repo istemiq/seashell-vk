@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,magenta \"npm:api\" \"npm:start\"",
     "start": "vite",
     "start:tunnel": "set VITE_TUNNEL=1&& vite",
     "tunnel-local": "npx --yes localtunnel --port 5173",
@@ -12,7 +13,9 @@
     "preview": "vite preview",
     "tunnel": "vk-tunnel --http-protocol=http --host=localhost --port=5173",
     "deploy": "vite build && vk-miniapps-deploy",
-    "api": "node server/index.js"
+    "api": "node server/index.js",
+    "compose": "docker compose up --build",
+    "compose:detach": "docker compose up --build -d"
   },
   "dependencies": {
     "@vkontakte/icons": "^3.1.1",
@@ -22,13 +25,15 @@
     "@vkontakte/vkui": "^7.0.0",
     "prop-types": "^15.8.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "undici": "^6.25.0"
   },
   "devDependencies": {
     "@vitejs/plugin-legacy": "^5.3.1",
     "@vitejs/plugin-react": "^4.2.1",
     "@vkontakte/vk-miniapps-deploy": "^0.1.6",
     "@vkontakte/vk-tunnel": "^0.2.4",
+    "concurrently": "^9.2.1",
     "eruda": "^3.0.1",
     "esbuild": "~0.20.0",
     "eslint": "^8.55.0",

@@ -1,0 +1,32 @@
+# Локальный запуск API + Vite одной командой из папки seashell:
+#   docker compose up --build
+# Перед первым запуском скопируй server/.env.example → server/.env и впиши GIGACHAT_API_KEY.
+# Открой в браузере: http://localhost:5173  (API: http://localhost:3001)
+
+services:
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./server/.env
+    volumes:
+      - seashell-data:/data
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:3001
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  seashell-data:
