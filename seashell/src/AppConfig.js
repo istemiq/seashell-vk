@@ -1,3 +1,7 @@
+/**
+ * Обёртка приложения: тема VK, отступы safe area, провайдеры VKUI и роутер.
+ * Без этого слоя панели не получают правильный внешний вид в WebView.
+ */
 import vkBridge, { parseURLSearchParamsForGetLaunchParams } from '@vkontakte/vk-bridge';
 import { useAdaptivity, useAppearance, useInsets } from '@vkontakte/vk-bridge-react';
 import { AdaptivityProvider, ConfigProvider, AppRoot } from '@vkontakte/vkui';

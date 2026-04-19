@@ -1,3 +1,8 @@
+/**
+ * Загрузка переменных окружения до остального `server/index.js`.
+ * Читает `seashell/.env` и `server/.env` (серверный файл перекрывает корень).
+ * См. также DEPENDENCIES.md в каталоге seashell.
+ */
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

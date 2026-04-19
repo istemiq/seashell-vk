@@ -1,10 +1,13 @@
+/**
+ * Точка входа фронтенда (Vite собирает бандл из этого файла).
+ * Порядок: инициализация VK Bridge → монтирование React → в dev подключается Eruda (отладка в WebView).
+ */
 import { createRoot } from 'react-dom/client';
 import vkBridge from '@vkontakte/vk-bridge';
 import { AppConfig } from './AppConfig.js';
 
 async function bootstrap() {
-  // В обычном браузере VKWebAppInit часто «висит» — без этого UI не монтируется (белый экран).
-  // В клиенте VK нужно дождаться init.
+  // VKWebAppInit: в WebView VK ждём await; в обычном Chrome промис может не завершиться — не блокируем рендер.
   if (vkBridge.isWebView?.()) {
     await vkBridge.send('VKWebAppInit');
   } else {

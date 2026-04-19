@@ -1,3 +1,8 @@
+/**
+ * Клиент GigaChat OAuth + chat/completions.
+ * Промпты лежат в `server/prompts/`. Ответы парсятся в JSON (примеры словаря, ход диалога практики).
+ * Исходящие HTTPS-запросы идут через `undici` с опциональным ослаблением TLS (см. tlsInsecure).
+ */
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';

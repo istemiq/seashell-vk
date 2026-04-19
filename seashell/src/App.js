@@ -1,3 +1,7 @@
+/**
+ * Корневой компонент: один View со всеми панелями (home, dictionary, practice…).
+ * Загружает данные пользователя через VK Bridge для главной страницы.
+ */
 import { useState, useEffect } from 'react';
 import bridge from '@vkontakte/vk-bridge';
 import { View, SplitLayout, SplitCol, ScreenSpinner } from '@vkontakte/vkui';

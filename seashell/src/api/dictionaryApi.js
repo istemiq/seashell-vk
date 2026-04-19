@@ -1,3 +1,8 @@
+/**
+ * HTTP-клиент для REST API словаря (`/api/words`, `/api/refresh-examples`…).
+ * Все запросы с заголовком X-VK-User-Id (из URL или fallback после VKWebAppGetUserInfo).
+ * База URL: в проде задаётся VITE_API_URL; в dev — относительный `/api` + прокси Vite.
+ */
 import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
 
 /**

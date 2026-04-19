@@ -1,3 +1,7 @@
+/**
+ * Один ход разговорной практики: POST /api/practice/turn.
+ * Использует тот же `resolveVkUserId`, что и словарь (общий fallback пользователя).
+ */
 import { resolveVkUserId } from './dictionaryApi.js';
 
 const RAW_BASE = (import.meta.env.VITE_API_URL || '').trim();

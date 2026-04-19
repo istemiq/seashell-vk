@@ -1,3 +1,7 @@
+/**
+ * Конфигурация Vite: React, прокси /api → localhost:3001 (Express), legacy-бандл при необходимости.
+ * Подробности по пакетам — в DEPENDENCIES.md в корне seashell.
+ */
 import { defineConfig, transformWithEsbuild } from 'vite';
 import react from '@vitejs/plugin-react';
 import legacy from '@vitejs/plugin-legacy';

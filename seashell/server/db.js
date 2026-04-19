@@ -1,3 +1,8 @@
+/**
+ * Слой доступа к SQLite: слова пользователя и примеры с переводами.
+ * Движок: встроенный модуль Node `node:sqlite` (DatabaseSync). Файл БД: server/data/words.db.
+ * Миграции: новые колонки добавляются через ALTER TABLE при старте, если их ещё нет.
+ */
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs';
 import { englishLineFromItem, russianLineFromItem } from './exampleFields.js';
@@ -38,6 +43,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_examples_word ON examples(word_id);
 `);
 
+// Миграции для старых БД без новых колонок (однократно при первом запуске после обновления).
 const exampleColumns = db.prepare('PRAGMA table_info(examples)').all();
 if (!exampleColumns.some((c) => c.name === 'translation')) {
   db.exec('ALTER TABLE examples ADD COLUMN translation TEXT');
@@ -48,6 +54,7 @@ if (!wordColumns.some((c) => c.name === 'gloss_ru')) {
   db.exec('ALTER TABLE words ADD COLUMN gloss_ru TEXT');
 }
 
+/** Разбор ответа GigaChat: либо массив примеров, либо объект { glossRu, examples }. */
 function unpackWordPayload(payload) {
   if (Array.isArray(payload)) {
     return { glossRu: null, examples: payload };

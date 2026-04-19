@@ -1,3 +1,8 @@
+/**
+ * HTTP API для мини-приложения: словарь (SQLite), разговорная практика (GigaChat).
+ * Публично: GET /api/health. Остальное — только с заголовком X-VK-User-Id (middleware ниже).
+ * Запуск: из каталога seashell — npm run api или npm run dev.
+ */
 import './load-env.js';
 import express from 'express';
 import cors from 'cors';
@@ -14,7 +19,7 @@ import { generateWordExamples, generatePracticeTurn, tlsInsecure } from './gigac
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
 
-// CORS до любых маршрутов (в т.ч. health и JSON)
+// --- Общие middleware: CORS (фронт на другом порту), JSON-тело запросов ---
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: '256kb' }));
 
@@ -31,6 +36,7 @@ function vkUserId(req) {
   return n;
 }
 
+// Маршруты ниже (всё после этого app.use) требуют заголовок X-VK-User-Id. /api/health объявлен выше — без авторизации.
 app.use((req, res, next) => {
   const uid = vkUserId(req);
   if (!uid) {
@@ -46,6 +52,7 @@ function normalizeWord(w) {
     .replace(/\s+/g, ' ');
 }
 
+// --- Разговорная практика (один ход диалога через GigaChat) ---
 app.post('/api/practice/turn', async (req, res) => {
   const userText = normalizeWord(req.body?.userText ?? req.body?.text ?? '');
   if (!userText || userText.length > 4000) {
@@ -65,6 +72,7 @@ app.post('/api/practice/turn', async (req, res) => {
   }
 });
 
+// --- Словарь: список, карточка, добавление, удаление, обновление примеров ---
 app.get('/api/words', (req, res) => {
   try {
     const rows = listWords(req.vkUserId);

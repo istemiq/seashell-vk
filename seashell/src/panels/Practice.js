@@ -1,3 +1,10 @@
+/**
+ * Панель «Разговорная практика»:
+ * - ввод текста и отправка на `/api/practice/turn`;
+ * - опционально голос (Web Speech API: распознавание в браузере);
+ * - отображение хода: что сказал пользователь, как поняла модель, правки, реплика бота;
+ * - озвучка ответа через speechSynthesis (бесплатно, на устройстве пользователя).
+ */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import bridge from '@vkontakte/vk-bridge';
 import {
@@ -22,8 +29,6 @@ import { setVkUserIdFallback } from '../api/dictionaryApi.js';
 import * as practiceApi from '../api/practiceApi.js';
 import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
 import { withTimeout } from '../utils/withTimeout.js';
-
-/** Разговорная практика: текст и голос (распознавание в браузере), ответ бэкенда — эхо, правки, реплика. */
 
 const BRIDGE_GET_USER_MS = 8000;
 const DEV_FALLBACK_VK_USER_ID = Number(import.meta.env.VITE_DEV_VK_USER_ID) || 1000001;

@@ -1,3 +1,7 @@
+/**
+ * Панель «Словарь»: список слов, добавление с генерацией примеров через GigaChat, карусель примеров с переводом.
+ * См. `dictionaryApi.js` и `server/db.js`.
+ */
 import { useCallback, useEffect, useState } from 'react';
 import bridge from '@vkontakte/vk-bridge';
 import {
@@ -22,8 +26,6 @@ import PropTypes from 'prop-types';
 import * as api from '../api/dictionaryApi.js';
 import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
 import { withTimeout } from '../utils/withTimeout.js';
-
-/** Словарь: добавление слова, генерация примеров и переводов на бэкенде, карусель примеров. */
 
 const BRIDGE_GET_USER_MS = 8000;
 const DEV_FALLBACK_VK_USER_ID = Number(import.meta.env.VITE_DEV_VK_USER_ID) || 1000001;

@@ -1,3 +1,7 @@
+/**
+ * Конфигурация маршрутов (hash router: #/dictionary и т.д.).
+ * Каждая панель — отдельный экран внутри одного View.
+ */
 import {
   createHashRouter,
   createPanel,
