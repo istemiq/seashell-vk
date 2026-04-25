@@ -1,5 +1,5 @@
 /**
- * HTTP API для мини-приложения: словарь (SQLite), разговорная практика (GigaChat).
+ * HTTP API для мини-приложения: словарь (PostgreSQL), разговорная практика (GigaChat).
  * Публично: GET /api/health. Остальное — только с заголовком X-VK-User-Id (middleware ниже).
  * Запуск: из каталога seashell — npm run api или npm run dev.
  */
@@ -7,6 +7,7 @@ import './load-env.js';
 import express from 'express';
 import cors from 'cors';
 import {
+  initDb,
   listWords,
   getWordWithExamples,
   insertWordWithExamples,
@@ -59,8 +60,9 @@ app.post('/api/practice/turn', async (req, res) => {
     return res.status(400).json({ error: 'Invalid text' });
   }
   const history = Array.isArray(req.body?.history) ? req.body.history : [];
+  const tone = typeof req.body?.tone === 'string' ? req.body.tone : undefined;
   try {
-    const turn = await generatePracticeTurn({ userText, history });
+    const turn = await generatePracticeTurn({ userText, history, tone });
     res.json({
       echo: turn.echo || userText,
       corrections: turn.corrections,
@@ -73,9 +75,9 @@ app.post('/api/practice/turn', async (req, res) => {
 });
 
 // --- Словарь: список, карточка, добавление, удаление, обновление примеров ---
-app.get('/api/words', (req, res) => {
+app.get('/api/words', async (req, res) => {
   try {
-    const rows = listWords(req.vkUserId);
+    const rows = await listWords(req.vkUserId);
     res.json({ words: rows });
   } catch (e) {
     console.error(e);
@@ -83,10 +85,10 @@ app.get('/api/words', (req, res) => {
   }
 });
 
-app.get('/api/words/:id', (req, res) => {
+app.get('/api/words/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const row = getWordWithExamples(req.vkUserId, id);
+    const row = await getWordWithExamples(req.vkUserId, id);
     if (!row) {
       return res.status(404).json({ error: 'Not found' });
     }
@@ -110,12 +112,12 @@ async function handleRefreshExamples(req, res) {
     return res.status(400).json({ error: 'Invalid word id' });
   }
   try {
-    const row = getWordWithExamples(req.vkUserId, id);
+    const row = await getWordWithExamples(req.vkUserId, id);
     if (!row) {
       return res.status(404).json({ error: 'Not found' });
     }
     const generated = await generateWordExamples(row.word);
-    const saved = replaceExamplesForWord(req.vkUserId, id, generated);
+    const saved = await replaceExamplesForWord(req.vkUserId, id, generated);
     res.json(saved);
   } catch (e) {
     console.error(e);
@@ -134,12 +136,12 @@ app.post('/api/words', async (req, res) => {
   }
 
   try {
-    if (findWordByLemma(req.vkUserId, word)) {
+    if (await findWordByLemma(req.vkUserId, word)) {
       return res.status(409).json({ error: 'Word already exists' });
     }
 
     const generated = await generateWordExamples(word);
-    const saved = insertWordWithExamples(req.vkUserId, word, generated);
+    const saved = await insertWordWithExamples(req.vkUserId, word, generated);
     res.status(201).json(saved);
   } catch (e) {
     console.error(e);
@@ -147,10 +149,10 @@ app.post('/api/words', async (req, res) => {
   }
 });
 
-app.delete('/api/words/:id', (req, res) => {
+app.delete('/api/words/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const ok = deleteWord(req.vkUserId, id);
+    const ok = await deleteWord(req.vkUserId, id);
     if (!ok) {
       return res.status(404).json({ error: 'Not found' });
     }
@@ -161,10 +163,18 @@ app.delete('/api/words/:id', (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  const tls = process.env.GIGACHAT_TLS_INSECURE?.trim();
-  console.log(`API: http://0.0.0.0:${PORT} (PORT=${process.env.PORT ?? 'default 3001'})`);
-  console.log(
-    `GigaChat TLS relaxed (undici): ${tlsInsecure() ? 'yes' : 'no'} | NODE_ENV=${process.env.NODE_ENV ?? '(не задан)'} | GIGACHAT_TLS_INSECURE=${tls ?? '(unset)'}`
-  );
+async function start() {
+  await initDb();
+  app.listen(PORT, '0.0.0.0', () => {
+    const tls = process.env.GIGACHAT_TLS_INSECURE?.trim();
+    console.log(`API: http://0.0.0.0:${PORT} (PORT=${process.env.PORT ?? 'default 3001'})`);
+    console.log(
+      `GigaChat TLS relaxed (undici): ${tlsInsecure() ? 'yes' : 'no'} | NODE_ENV=${process.env.NODE_ENV ?? '(не задан)'} | GIGACHAT_TLS_INSECURE=${tls ?? '(unset)'}`,
+    );
+  });
+}
+
+start().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });

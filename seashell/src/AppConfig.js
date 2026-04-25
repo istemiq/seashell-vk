@@ -1,32 +1,32 @@
 /**
- * Обёртка приложения: тема VK, отступы safe area, провайдеры VKUI и роутер.
- * Без этого слоя панели не получают правильный внешний вид в WebView.
+ * Обёртка приложения: ConfigProvider (тёмная тема VKUI), CRT-стили (`styles/crt-theme.css`),
+ * safe area, роутер. Класс `seashell-crt` на AppRoot задаёт ретро-терминальный вид (янтарная палитра).
  */
 import vkBridge, { parseURLSearchParamsForGetLaunchParams } from '@vkontakte/vk-bridge';
-import { useAdaptivity, useAppearance, useInsets } from '@vkontakte/vk-bridge-react';
+import { useAdaptivity, useInsets } from '@vkontakte/vk-bridge-react';
 import { AdaptivityProvider, ConfigProvider, AppRoot } from '@vkontakte/vkui';
 import { RouterProvider } from '@vkontakte/vk-mini-apps-router';
 import '@vkontakte/vkui/dist/vkui.css';
+import './styles/crt-theme.css';
 
 import { transformVKBridgeAdaptivity } from './utils';
 import { router } from './routes';
 import { App } from './App';
 
 export const AppConfig = () => {
-  const vkBridgeAppearance = useAppearance() || undefined;
   const vkBridgeInsets = useInsets() || undefined;
   const adaptivity = transformVKBridgeAdaptivity(useAdaptivity());
   const { vk_platform } = parseURLSearchParamsForGetLaunchParams(window.location.search);
 
   return (
     <ConfigProvider
-      colorScheme={vkBridgeAppearance}
+      colorScheme="dark"
       platform={vk_platform === 'desktop_web' ? 'vkcom' : undefined}
       isWebView={vkBridge.isWebView()}
       hasCustomPanelHeaderAfter={true}
     >
       <AdaptivityProvider {...adaptivity}>
-        <AppRoot mode="full" safeAreaInsets={vkBridgeInsets}>
+        <AppRoot mode="full" safeAreaInsets={vkBridgeInsets} className="seashell-crt">
           <RouterProvider router={router}>
             <App />
           </RouterProvider>

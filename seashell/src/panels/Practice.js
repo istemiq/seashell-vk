@@ -21,14 +21,17 @@ import {
   FormItem,
   Separator,
   Spinner,
+  Snackbar,
 } from '@vkontakte/vkui';
 import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import PropTypes from 'prop-types';
 
 import { setVkUserIdFallback } from '../api/dictionaryApi.js';
+import { addWord as addWordToDictionary } from '../api/dictionaryApi.js';
 import * as practiceApi from '../api/practiceApi.js';
 import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
 import { withTimeout } from '../utils/withTimeout.js';
+import { loadSettings } from '../utils/settings.js';
 
 const BRIDGE_GET_USER_MS = 8000;
 const DEV_FALLBACK_VK_USER_ID = Number(import.meta.env.VITE_DEV_VK_USER_ID) || 1000001;
@@ -45,6 +48,8 @@ export const Practice = ({ id }) => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [snackbar, setSnackbar] = useState(null);
   const [listening, setListening] = useState(false);
   const recRef = useRef(null);
 
@@ -93,9 +98,11 @@ export const Practice = ({ id }) => {
       setInput('');
       try {
         const history = historyForApi();
+        const s = loadSettings();
         const { echo, corrections, reply } = await practiceApi.postPracticeTurn({
           userText,
           history,
+          tone: s.practiceTone || 'neutral',
         });
         setTurns((prev) => [
           ...prev,
@@ -166,21 +173,68 @@ export const Practice = ({ id }) => {
 
   const canSpeak = typeof window !== 'undefined' && !!window.speechSynthesis;
   const speakReply = (text) => {
+    const s = loadSettings();
+    if (!s.ttsEnabled) return;
     if (!canSpeak || !text) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'en-US';
-    u.rate = 0.95;
+    u.rate = Number(s.ttsRate) || 0.95;
     window.speechSynthesis.speak(u);
+  };
+
+  const selectedTextOr = (fallback) => {
+    if (typeof window === 'undefined') return fallback;
+    const sel = window.getSelection?.();
+    const t = sel ? String(sel.toString() || '').trim() : '';
+    return t || fallback;
+  };
+
+  const addTurnToDictionary = async (text) => {
+    const word = String(text || '').trim().replace(/\s+/g, ' ');
+    if (!word || word.length > 200) {
+      const msg = 'Слишком длинно для словаря (лимит 200 символов).';
+      setNotice(msg);
+      setSnackbar(
+        <Snackbar onClose={() => setSnackbar(null)} duration={2500}>
+          {msg}
+        </Snackbar>,
+      );
+      return;
+    }
+    try {
+      await addWordToDictionary(word);
+      const msg = `Добавлено в словарь: ${word}`;
+      setNotice(msg);
+      setSnackbar(
+        <Snackbar onClose={() => setSnackbar(null)} duration={2200}>
+          {msg}
+        </Snackbar>,
+      );
+    } catch (e) {
+      const msg = e.message || 'Не удалось добавить в словарь';
+      setNotice(msg);
+      setSnackbar(
+        <Snackbar onClose={() => setSnackbar(null)} duration={3000}>
+          {msg}
+        </Snackbar>,
+      );
+    }
   };
 
   const voiceAvailable = !!getSpeechRecognition();
 
   return (
     <Panel id={id}>
-      <PanelHeader before={<PanelHeaderBack onClick={() => routeNavigator.back()} />}>
-        Разговорная практика
-      </PanelHeader>
+      <PanelHeader before={<PanelHeaderBack onClick={() => routeNavigator.back()} />}>Разговорная практика</PanelHeader>
+
+      {snackbar}
+
+      {notice && (
+        <Group>
+          <Footnote>{notice}</Footnote>
+        </Group>
+      )}
 
       {!vkReady && !error && (
         <Box style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
@@ -209,9 +263,25 @@ export const Practice = ({ id }) => {
               <Box key={i} style={{ marginBottom: 16 }}>
                 <Text weight="2">Ты</Text>
                 <Text style={{ marginTop: 4 }}>{t.userText}</Text>
+                <Button
+                  size="m"
+                  mode="tertiary"
+                  style={{ marginTop: 8 }}
+                  onClick={() => addTurnToDictionary(selectedTextOr(t.userText))}
+                >
+                  В словарь
+                </Button>
                 <Separator style={{ margin: '10px 0' }} />
                 <Text weight="2">Как услышано</Text>
                 <Text style={{ marginTop: 4 }}>{t.echo}</Text>
+                <Button
+                  size="m"
+                  mode="tertiary"
+                  style={{ marginTop: 8 }}
+                  onClick={() => addTurnToDictionary(selectedTextOr(t.echo))}
+                >
+                  В словарь
+                </Button>
                 {t.corrections && (
                   <>
                     <Separator style={{ margin: '10px 0' }} />
@@ -222,6 +292,14 @@ export const Practice = ({ id }) => {
                 <Separator style={{ margin: '10px 0' }} />
                 <Text weight="2">Собеседник</Text>
                 <Text style={{ marginTop: 4, lineHeight: 1.45 }}>{t.reply}</Text>
+                <Button
+                  size="m"
+                  mode="tertiary"
+                  style={{ marginTop: 8 }}
+                  onClick={() => addTurnToDictionary(selectedTextOr(t.reply))}
+                >
+                  В словарь
+                </Button>
                 <Button
                   size="m"
                   mode="tertiary"

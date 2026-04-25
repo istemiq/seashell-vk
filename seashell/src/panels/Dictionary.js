@@ -1,6 +1,6 @@
 /**
  * Панель «Словарь»: список слов, добавление с генерацией примеров через GigaChat, карусель примеров с переводом.
- * См. `dictionaryApi.js` и `server/db.js`.
+ * См. `dictionaryApi.js` и `server/db.js` (PostgreSQL).
  */
 import { useCallback, useEffect, useState } from 'react';
 import bridge from '@vkontakte/vk-bridge';
@@ -26,16 +26,19 @@ import PropTypes from 'prop-types';
 import * as api from '../api/dictionaryApi.js';
 import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
 import { withTimeout } from '../utils/withTimeout.js';
+import { loadSettings } from '../utils/settings.js';
 
 const BRIDGE_GET_USER_MS = 8000;
 const DEV_FALLBACK_VK_USER_ID = Number(import.meta.env.VITE_DEV_VK_USER_ID) || 1000001;
 
 function speakEnglish(text) {
+  const s = loadSettings();
+  if (!s.ttsEnabled) return;
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'en-US';
-  u.rate = 0.95;
+  u.rate = Number(s.ttsRate) || 0.95;
   window.speechSynthesis.speak(u);
 }
 

@@ -265,7 +265,8 @@ function buildPracticePrompt(userText, historyLines) {
           .slice(0, 4000);
   return loadPracticeTurnTemplate()
     .replace('{{USER_TEXT}}', String(userText).trim().slice(0, 4000))
-    .replace('{{HISTORY}}', h);
+    .replace('{{HISTORY}}', h)
+    .replace('{{TONE_HINT}}', '');
 }
 
 function extractJsonObject(text) {
@@ -300,7 +301,14 @@ function normalizePracticeTurn(obj) {
 }
 
 /** Один ход диалога: эхо реплики, правки, ответ собеседника. */
-export async function generatePracticeTurn({ userText, history }) {
+function toneHint(tone) {
+  const t = String(tone || '').toLowerCase().trim();
+  if (t === 'friendly') return 'Friendly: be warm and supportive, keep it short (1–2 sentences).';
+  if (t === 'strict') return 'Strict: be concise and pragmatic. Avoid small talk. Still polite.';
+  return 'Neutral: natural, calm, and short (1–2 sentences).';
+}
+
+export async function generatePracticeTurn({ userText, history, tone }) {
   const model = process.env.GIGACHAT_MODEL_NAME || 'GigaChat';
   const token = await getAccessToken();
   const historyLines = Array.isArray(history)
@@ -312,7 +320,7 @@ export async function generatePracticeTurn({ userText, history }) {
           text: m.text.slice(0, 800),
         }))
     : [];
-  const userContent = buildPracticePrompt(userText, historyLines);
+  const userContent = buildPracticePrompt(userText, historyLines).replace('{{TONE_HINT}}', toneHint(tone));
 
   let res;
   try {

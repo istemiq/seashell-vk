@@ -20,6 +20,7 @@ export const DEFAULT_VIEW_PANELS = {
   DICTIONARY: 'dictionary',
   PRACTICE: 'practice',
   README: 'readme',
+  SETTINGS: 'settings',
 };
 
 export const routes = RoutesConfig.create([
@@ -30,6 +31,7 @@ export const routes = RoutesConfig.create([
       createPanel(DEFAULT_VIEW_PANELS.DICTIONARY, `/${DEFAULT_VIEW_PANELS.DICTIONARY}`, []),
       createPanel(DEFAULT_VIEW_PANELS.PRACTICE, `/${DEFAULT_VIEW_PANELS.PRACTICE}`, []),
       createPanel(DEFAULT_VIEW_PANELS.README, `/${DEFAULT_VIEW_PANELS.README}`, []),
+      createPanel(DEFAULT_VIEW_PANELS.SETTINGS, `/${DEFAULT_VIEW_PANELS.SETTINGS}`, []),
     ]),
   ]),
 ]);

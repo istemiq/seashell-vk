@@ -42,7 +42,7 @@ function messageFromStatusAndBody(status, text) {
 
 /**
  * Один шаг диалога: эхо, правки, ответ собеседника.
- * @param {{ userText: string, history: Array<{ role: string, text: string }> }} body
+ * @param {{ userText: string, history: Array<{ role: string, text: string }>, tone?: string }} body
  */
 export async function postPracticeTurn(body) {
   const r = await fetch(apiUrl('/practice/turn'), {

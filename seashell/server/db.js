@@ -1,57 +1,50 @@
 /**
- * Слой доступа к SQLite: слова пользователя и примеры с переводами.
- * Движок: встроенный модуль Node `node:sqlite` (DatabaseSync). Файл БД: server/data/words.db.
- * Миграции: новые колонки добавляются через ALTER TABLE при старте, если их ещё нет.
+ * Слой доступа к PostgreSQL: слова пользователя и примеры с переводами.
+ * Подключение: переменная окружения DATABASE_URL.
  */
-import { DatabaseSync } from 'node:sqlite';
-import fs from 'fs';
+import pg from 'pg';
 import { englishLineFromItem, russianLineFromItem } from './exampleFields.js';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// На хостинге с постоянным диском: DATA_DIR=/data (см. DEPLOY.txt)
-const dataDir = process.env.DATA_DIR
-  ? path.resolve(process.env.DATA_DIR)
-  : path.join(__dirname, 'data');
-const dbPath = path.join(dataDir, 'words.db');
+const { Pool } = pg;
 
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+function resolveDatabaseUrl() {
+  const url = process.env.DATABASE_URL?.trim();
+  if (url) return url;
+
+  // Dev-удобство: если забыли .env, пробуем локальный Postgres по умолчанию.
+  // В production по-прежнему требуем явный DATABASE_URL.
+  if ((process.env.NODE_ENV ?? '').toLowerCase() !== 'production') {
+    return 'postgresql://seashell:seashell@localhost:5432/seashell';
+  }
+
+  throw new Error(
+    'DATABASE_URL не задан. Укажи строку подключения PostgreSQL (например: postgresql://user:pass@host:5432/db)',
+  );
 }
 
-const db = new DatabaseSync(dbPath);
-db.exec('PRAGMA foreign_keys = ON');
+const pool = new Pool({ connectionString: resolveDatabaseUrl() });
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS words (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    vk_user_id INTEGER NOT NULL,
-    word TEXT NOT NULL COLLATE NOCASE,
-    created_at INTEGER NOT NULL,
-    UNIQUE (vk_user_id, word)
+export async function initDb() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS words (
+    id SERIAL PRIMARY KEY,
+    vk_user_id BIGINT NOT NULL,
+    word TEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    gloss_ru TEXT
+  )`);
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS words_user_word_lower ON words (vk_user_id, LOWER(word))`,
   );
-  CREATE TABLE IF NOT EXISTS examples (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    word_id INTEGER NOT NULL,
+  await pool.query(`CREATE TABLE IF NOT EXISTS examples (
+    id SERIAL PRIMARY KEY,
+    word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
     idx INTEGER NOT NULL,
     text TEXT NOT NULL,
-    FOREIGN KEY (word_id) REFERENCES words(id) ON DELETE CASCADE,
+    translation TEXT,
     UNIQUE (word_id, idx)
-  );
-  CREATE INDEX IF NOT EXISTS idx_words_user ON words(vk_user_id);
-  CREATE INDEX IF NOT EXISTS idx_examples_word ON examples(word_id);
-`);
-
-// Миграции для старых БД без новых колонок (однократно при первом запуске после обновления).
-const exampleColumns = db.prepare('PRAGMA table_info(examples)').all();
-if (!exampleColumns.some((c) => c.name === 'translation')) {
-  db.exec('ALTER TABLE examples ADD COLUMN translation TEXT');
-}
-
-const wordColumns = db.prepare('PRAGMA table_info(words)').all();
-if (!wordColumns.some((c) => c.name === 'gloss_ru')) {
-  db.exec('ALTER TABLE words ADD COLUMN gloss_ru TEXT');
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_words_user ON words (vk_user_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_examples_word ON examples (word_id)`);
 }
 
 /** Разбор ответа GigaChat: либо массив примеров, либо объект { glossRu, examples }. */
@@ -68,109 +61,115 @@ function unpackWordPayload(payload) {
   return { glossRu: null, examples: [] };
 }
 
-export function listWords(vkUserId) {
-  const rows = db
-    .prepare(
-      `SELECT w.id, w.word, w.created_at,
-        (SELECT COUNT(*) FROM examples e WHERE e.word_id = w.id) AS example_count
-       FROM words w WHERE w.vk_user_id = ?
-       ORDER BY w.created_at DESC`,
-    )
-    .all(vkUserId);
+export async function listWords(vkUserId) {
+  const { rows } = await pool.query(
+    `SELECT w.id, w.word, w.created_at,
+      (SELECT COUNT(*)::int FROM examples e WHERE e.word_id = w.id) AS example_count
+     FROM words w WHERE w.vk_user_id = $1
+     ORDER BY w.created_at DESC`,
+    [vkUserId],
+  );
   return rows.map((r) => ({
     ...r,
     example_count: Number(r.example_count ?? 0),
   }));
 }
 
-export function getWordWithExamples(vkUserId, wordId) {
-  const word = db
-    .prepare('SELECT id, word, created_at, gloss_ru FROM words WHERE id = ? AND vk_user_id = ?')
-    .get(wordId, vkUserId);
+export async function getWordWithExamples(vkUserId, wordId) {
+  const { rows: wRows } = await pool.query(
+    'SELECT id, word, created_at, gloss_ru FROM words WHERE id = $1 AND vk_user_id = $2',
+    [wordId, vkUserId],
+  );
+  const word = wRows[0];
   if (!word) return null;
-  const examples = db
-    .prepare('SELECT idx, text, translation FROM examples WHERE word_id = ? ORDER BY idx ASC')
-    .all(word.id);
+  const { rows: examples } = await pool.query(
+    'SELECT idx, text, translation FROM examples WHERE word_id = $1 ORDER BY idx ASC',
+    [word.id],
+  );
   return { ...word, examples };
 }
 
-export function insertWordWithExamples(vkUserId, wordNorm, payload) {
+export async function insertWordWithExamples(vkUserId, wordNorm, payload) {
   const { glossRu, examples: examplesIn } = unpackWordPayload(payload);
   const createdAt = Date.now();
-  const insertWord = db.prepare(
-    'INSERT INTO words (vk_user_id, word, created_at, gloss_ru) VALUES (?, ?, ?, ?)',
-  );
-  const insertEx = db.prepare(
-    'INSERT INTO examples (word_id, idx, text, translation) VALUES (?, ?, ?, ?)',
-  );
-
-  db.exec('BEGIN IMMEDIATE');
+  const client = await pool.connect();
   try {
-    const info = insertWord.run(vkUserId, wordNorm, createdAt, glossRu);
-    const wordId = Number(info.lastInsertRowid);
-    examplesIn.forEach((ex, idx) => {
+    await client.query('BEGIN');
+    const ins = await client.query(
+      'INSERT INTO words (vk_user_id, word, created_at, gloss_ru) VALUES ($1, $2, $3, $4) RETURNING id',
+      [vkUserId, wordNorm, createdAt, glossRu],
+    );
+    const wordId = Number(ins.rows[0].id);
+    for (let idx = 0; idx < examplesIn.length; idx++) {
+      const ex = examplesIn[idx];
       const text = englishLineFromItem(ex);
       const tr = russianLineFromItem(ex);
       const translation = typeof ex === 'string' ? null : tr || null;
-      insertEx.run(wordId, idx, text, translation);
-    });
-    db.exec('COMMIT');
+      await client.query(
+        'INSERT INTO examples (word_id, idx, text, translation) VALUES ($1, $2, $3, $4)',
+        [wordId, idx, text, translation],
+      );
+    }
+    await client.query('COMMIT');
     return getWordWithExamples(vkUserId, wordId);
   } catch (e) {
-    try {
-      db.exec('ROLLBACK');
-    } catch {
-      // ignore
-    }
+    await client.query('ROLLBACK');
     throw e;
+  } finally {
+    client.release();
   }
 }
 
 /** Удаляет все примеры слова и записывает новый набор (тот же payload, что у insertWordWithExamples). */
-export function replaceExamplesForWord(vkUserId, wordId, payload) {
+export async function replaceExamplesForWord(vkUserId, wordId, payload) {
   const { glossRu, examples: examplesIn } = unpackWordPayload(payload);
-  const word = db
-    .prepare('SELECT id FROM words WHERE id = ? AND vk_user_id = ?')
-    .get(wordId, vkUserId);
+  const { rows } = await pool.query('SELECT id FROM words WHERE id = $1 AND vk_user_id = $2', [
+    wordId,
+    vkUserId,
+  ]);
+  const word = rows[0];
   if (!word) return null;
 
-  const updateGloss = db.prepare('UPDATE words SET gloss_ru = ? WHERE id = ? AND vk_user_id = ?');
-  const insertEx = db.prepare(
-    'INSERT INTO examples (word_id, idx, text, translation) VALUES (?, ?, ?, ?)',
-  );
-
-  db.exec('BEGIN IMMEDIATE');
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
     if (glossRu != null) {
-      updateGloss.run(glossRu, word.id, vkUserId);
+      await client.query('UPDATE words SET gloss_ru = $1 WHERE id = $2 AND vk_user_id = $3', [
+        glossRu,
+        word.id,
+        vkUserId,
+      ]);
     }
-    db.prepare('DELETE FROM examples WHERE word_id = ?').run(word.id);
-    examplesIn.forEach((ex, idx) => {
+    await client.query('DELETE FROM examples WHERE word_id = $1', [word.id]);
+    for (let idx = 0; idx < examplesIn.length; idx++) {
+      const ex = examplesIn[idx];
       const text = englishLineFromItem(ex);
       const tr = russianLineFromItem(ex);
       const translation = typeof ex === 'string' ? null : tr || null;
-      insertEx.run(word.id, idx, text, translation);
-    });
-    db.exec('COMMIT');
+      await client.query(
+        'INSERT INTO examples (word_id, idx, text, translation) VALUES ($1, $2, $3, $4)',
+        [word.id, idx, text, translation],
+      );
+    }
+    await client.query('COMMIT');
     return getWordWithExamples(vkUserId, word.id);
   } catch (e) {
-    try {
-      db.exec('ROLLBACK');
-    } catch {
-      // ignore
-    }
+    await client.query('ROLLBACK');
     throw e;
+  } finally {
+    client.release();
   }
 }
 
-export function deleteWord(vkUserId, wordId) {
-  const q = db.prepare('DELETE FROM words WHERE id = ? AND vk_user_id = ?');
-  const r = q.run(wordId, vkUserId);
-  return r.changes > 0;
+export async function deleteWord(vkUserId, wordId) {
+  const r = await pool.query('DELETE FROM words WHERE id = $1 AND vk_user_id = $2', [wordId, vkUserId]);
+  return r.rowCount > 0;
 }
 
-export function findWordByLemma(vkUserId, wordNorm) {
-  return db
-    .prepare('SELECT id FROM words WHERE vk_user_id = ? AND word = ? COLLATE NOCASE')
-    .get(vkUserId, wordNorm);
+export async function findWordByLemma(vkUserId, wordNorm) {
+  const { rows } = await pool.query(
+    'SELECT id FROM words WHERE vk_user_id = $1 AND LOWER(word) = LOWER($2)',
+    [vkUserId, wordNorm],
+  );
+  return rows[0] ?? null;
 }

@@ -8,9 +8,7 @@ export const Persik = ({ id }) => {
 
   return (
     <Panel id={id}>
-      <PanelHeader before={<PanelHeaderBack onClick={() => routeNavigator.back()} />}>
-        Persik
-      </PanelHeader>
+      <PanelHeader before={<PanelHeaderBack onClick={() => routeNavigator.back()} />}>Persik</PanelHeader>
       <Placeholder>
         <img width={230} src={PersikImage} alt="Persik The Cat" />
       </Placeholder>

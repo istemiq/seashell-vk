@@ -1,4 +1,4 @@
-Деплой API (словарь + GigaChat + SQLite) на бесплатный/дёшевый хост
+Деплой API (словарь + GigaChat + PostgreSQL) на бесплатный/дёшевый хост
 ================================================================
 
 Важно:
@@ -9,42 +9,40 @@
   npm run deploy
 
 Переменные окружения на сервере:
+- DATABASE_URL — строка подключения PostgreSQL (обязательно)
 - GIGACHAT_API_KEY
 - GIGACHAT_MODEL_NAME (например GigaChat-Max)
 - PORT (часто задаёт хостинг сам)
-- DATA_DIR=/data — если монтируете постоянный диск (рекомендуется)
 
 ------------------------------------------------------------
-Вариант A — Render.com (Docker)
+Вариант A — Render.com (Docker) + внешняя БД
 ------------------------------------------------------------
-1. Аккаунт на https://render.com
-2. New → Web Service → подключить GitHub-репозиторий
-3. Root: seashell/server (или собрать из подпапки)
-4. Docker
-5. Env: см. выше. Для SQLite на бесплатном тарифе диск иногда эфемерный —
-   для важных данных лучше платный Persistent Disk или другой вариант.
-6. URL вида https://xxx.onrender.com — его и подставить в VITE_API_URL
+1. Создай managed PostgreSQL (Render / Neon / Supabase и т.п.), скопируй DATABASE_URL.
+2. Web Service из репозитория: Root seashell/server, Docker.
+3. Env: DATABASE_URL, GIGACHAT_API_KEY, …
+4. URL API — подставь в VITE_API_URL при сборке фронта.
 
 ------------------------------------------------------------
 Вариант B — Fly.io
 ------------------------------------------------------------
-fly launch в папке server, добавить volume на /data, установить DATA_DIR=/data
+fly launch в папке server; для БД — Fly Postgres или внешний DATABASE_URL.
 
 ------------------------------------------------------------
 Вариант C — VPS (Oracle Free / Hetzner / Timeweb)
 ------------------------------------------------------------
-Установить Node 22+, скопировать папку server, npm install, systemd unit,
-nginx reverse proxy + HTTPS (Let's Encrypt). База в DATA_DIR на диске машины.
+Установить Node 22+, PostgreSQL, npm install в папке server, systemd unit,
+nginx reverse proxy + HTTPS (Let's Encrypt).
 
 ------------------------------------------------------------
-Вариант D — Docker Compose (локально: API + Vite одной командой)
+Вариант D — Docker Compose (локально: Postgres + API + Vite)
 ------------------------------------------------------------
 Из папки seashell:
-1. Скопируй server/.env.example в server/.env, впиши GIGACHAT_API_KEY (остальное можно по умолчанию).
+1. Скопируй server/.env.example → server/.env, впиши GIGACHAT_API_KEY.
 2. docker compose up --build   или: npm run compose
-3. Браузер: http://localhost:5173   API: http://localhost:3001/api/health
+3. Браузер: http://localhost:5173   API: http://localhost:3001
+   Сервис api получает DATABASE_URL на контейнер db автоматически из compose.
 
-База SQLite в томе Docker seashell-data (в контейнере api каталог DATA_DIR=/data).
+Локально без Docker: подними PostgreSQL, задай DATABASE_URL в server/.env, затем npm run api из seashell.
 
 ------------------------------------------------------------
 Проверка

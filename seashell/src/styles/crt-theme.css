@@ -1,0 +1,202 @@
+/**
+ * Ретро-терминал: тёплый янтарь на тёмном фоне (без «игровой» зелёной палитры).
+ * Селекторы внутри .seashell-crt на AppRoot.
+ */
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+  background: #100e0c;
+}
+
+.seashell-crt {
+  --crt-bg: #141110;
+  --crt-bg-elev: #1a1714;
+  --crt-fg: #d8c4a8;
+  --crt-fg-dim: #8a7a66;
+  --crt-border: #4a4036;
+  --crt-accent: #a67c32;
+  --crt-accent-text: #1a1410;
+  --crt-accent-hover: #b88d42;
+  --crt-accent-active: #8a6628;
+
+  /* VKUI 7 кнопки красятся через токены на html — иначе primary = «белая» акцентная заливка темы */
+  --vkui--color_background_accent_themed: var(--crt-accent);
+  --vkui--color_background_accent_themed--hover: var(--crt-accent-hover);
+  --vkui--color_background_accent_themed--active: var(--crt-accent-active);
+  --vkui--color_text_contrast_themed: var(--crt-accent-text);
+  --vkui--color_text_accent_themed: #d4b896;
+  --vkui--color_stroke_accent_themed: var(--crt-accent);
+  --vkui--color_background_secondary_alpha: rgba(166, 124, 50, 0.22);
+  --vkui--color_background_secondary_alpha--hover: rgba(166, 124, 50, 0.32);
+  --vkui--color_background_secondary_alpha--active: rgba(166, 124, 50, 0.42);
+  --vkui--color_transparent--hover: rgba(166, 124, 50, 0.12);
+  --vkui--color_transparent--active: rgba(166, 124, 50, 0.2);
+
+  min-height: 100%;
+  background: linear-gradient(180deg, #0f0d0b 0%, #161310 50%, #141110 100%);
+  color: var(--crt-fg);
+  font-family: Consolas, 'Courier New', Courier, monospace;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  text-shadow: 0 0 1px rgba(216, 196, 168, 0.2);
+}
+
+.seashell-crt .vkuiSplitLayout__host,
+.seashell-crt .vkuiSplitLayout__inner,
+.seashell-crt [class*='vkuiSplitCol'] {
+  background: transparent !important;
+}
+
+.seashell-crt .vkuiPanel__host {
+  background: var(--crt-bg) !important;
+  color: var(--crt-fg) !important;
+}
+
+.seashell-crt .vkuiPanelHeader {
+  background: var(--crt-bg-elev) !important;
+  border-bottom: 1px solid var(--crt-border) !important;
+  box-shadow: 0 0 10px rgba(166, 124, 50, 0.06);
+}
+
+.seashell-crt .vkuiPanelHeader__content-in,
+.seashell-crt .vkuiPanelHeader__content {
+  color: var(--crt-fg) !important;
+}
+
+.seashell-crt [class*='vkuiGroup'] {
+  background: transparent !important;
+  color: var(--crt-fg) !important;
+}
+
+.seashell-crt .vkuiInternalGroup--mode-card,
+.seashell-crt .vkuiGroup__modeCard {
+  background: rgba(26, 23, 20, 0.9) !important;
+  border: 1px solid var(--crt-border) !important;
+  border-radius: 4px;
+}
+
+.seashell-crt .vkuiHeader,
+.seashell-crt [class*='vkuiHeader'] {
+  color: var(--crt-fg-dim) !important;
+}
+
+.seashell-crt .vkuiText,
+.seashell-crt .vkuiFootnote,
+.seashell-crt .vkuiSubhead,
+.seashell-crt .vkuiCaption {
+  color: var(--crt-fg) !important;
+}
+
+.seashell-crt .vkuiFootnote {
+  color: var(--crt-fg-dim) !important;
+  opacity: 0.95;
+}
+
+.seashell-crt .vkuiCell,
+.seashell-crt .vkuiCell__main,
+.seashell-crt .vkuiSimpleCell {
+  color: var(--crt-fg) !important;
+}
+
+.seashell-crt .vkuiCell__subtitle,
+.seashell-crt .vkuiSimpleCell__subtitle {
+  color: var(--crt-fg-dim) !important;
+}
+
+/* Доп. страховка к токенам: граница и спиннер на primary */
+.seashell-crt .vkuiButton__host.vkuiButton__modePrimary {
+  border: 1px solid #7a5a28;
+  text-shadow: none;
+}
+
+.seashell-crt .vkuiButton__host.vkuiButton__modePrimary .vkuiButton__spinner {
+  color: var(--crt-accent-text) !important;
+}
+
+.seashell-crt .vkuiButton__host.vkuiButton__modeSecondary {
+  border: 1px solid var(--crt-border);
+}
+
+.seashell-crt .vkuiButton__host.vkuiButton__modeTertiary {
+  color: var(--crt-fg-dim) !important;
+}
+
+.seashell-crt .vkuiButton__host.vkuiButton__disabled.vkuiButton__modePrimary {
+  opacity: 0.45 !important;
+}
+
+.seashell-crt .vkuiInput,
+.seashell-crt .vkuiTextarea,
+.seashell-crt .vkuiFormField {
+  --vkui--color_field_background: #1a1612;
+}
+
+.seashell-crt input,
+.seashell-crt textarea {
+  background: #1a1612 !important;
+  color: var(--crt-fg) !important;
+  border-color: var(--crt-border) !important;
+  caret-color: var(--crt-fg);
+}
+
+.seashell-crt input::placeholder,
+.seashell-crt textarea::placeholder {
+  color: var(--crt-fg-dim);
+  opacity: 1;
+}
+
+.seashell-crt .vkuiSeparator {
+  background: var(--crt-border) !important;
+  opacity: 0.55;
+}
+
+.seashell-crt .vkuiSpinner {
+  color: var(--crt-fg) !important;
+}
+
+.seashell-crt .vkuiScreenSpinner {
+  background: rgba(15, 13, 11, 0.82) !important;
+}
+
+.seashell-crt .vkuiPlaceholder {
+  color: var(--crt-fg-dim) !important;
+}
+
+.seashell-crt .vkuiBanner {
+  background: rgba(50, 28, 28, 0.45) !important;
+  border: 1px solid #5a3a3a;
+}
+
+.seashell-crt .vkuiLink {
+  color: #e8c896 !important;
+}
+
+.seashell-crt .vkuiFormItem__top,
+.seashell-crt [class*='FormItem'] label {
+  color: var(--crt-fg-dim) !important;
+}
+
+.seashell-crt .vkuiImageBase,
+.seashell-crt .vkuiAvatar {
+  border: 1px solid var(--crt-border);
+}
+
+/* Декоративный блок «системный журнал» (справка и т.п.) */
+.seashell-crt .seashell-bootlog {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--crt-fg-dim);
+  padding: 12px 14px;
+  border: 1px dashed var(--crt-border);
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 2px;
+  letter-spacing: 0.02em;
+}
+
+.seashell-crt .seashell-bootlog strong {
+  color: var(--crt-fg);
+  font-weight: 600;
+}
