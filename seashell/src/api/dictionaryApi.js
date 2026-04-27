@@ -108,10 +108,71 @@ export async function fetchWords() {
   return r.json();
 }
 
+export async function fetchWordsInSet(setId) {
+  const id = setId != null ? parseInt(String(setId), 10) : NaN;
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error('Invalid setId');
+  }
+  const r = await request(`/words?setId=${encodeURIComponent(String(id))}`);
+  if (!r.ok) throw new Error(await readHttpError(r));
+  return r.json();
+}
+
 export async function fetchWord(wordId) {
   const r = await request(`/words/${wordId}`);
   if (!r.ok) throw new Error(await readHttpError(r));
   return r.json();
+}
+
+export async function fetchSets() {
+  const r = await request('/sets');
+  if (!r.ok) throw new Error(await readHttpError(r));
+  return r.json();
+}
+
+export async function createSet(name) {
+  const n = String(name ?? '').trim().replace(/\s+/g, ' ');
+  const r = await request('/sets', {
+    method: 'POST',
+    body: JSON.stringify({ name: n }),
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(messageFromStatusAndBody(r.status, text));
+  return JSON.parse(text);
+}
+
+export async function renameSet(setId, name) {
+  const id = setId != null ? parseInt(String(setId), 10) : NaN;
+  const n = String(name ?? '').trim().replace(/\s+/g, ' ');
+  if (!Number.isFinite(id) || id <= 0) throw new Error('Invalid setId');
+  const r = await request(`/sets/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name: n }),
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(messageFromStatusAndBody(r.status, text));
+  return JSON.parse(text);
+}
+
+export async function deleteSet(setId) {
+  const id = setId != null ? parseInt(String(setId), 10) : NaN;
+  if (!Number.isFinite(id) || id <= 0) throw new Error('Invalid setId');
+  const r = await request(`/sets/${id}`, { method: 'DELETE' });
+  const text = await r.text();
+  if (!r.ok) throw new Error(messageFromStatusAndBody(r.status, text));
+  return JSON.parse(text);
+}
+
+export async function updateWordSets(wordId, setIds) {
+  const id = wordId != null ? parseInt(String(wordId), 10) : NaN;
+  if (!Number.isFinite(id) || id <= 0) throw new Error('Invalid wordId');
+  const r = await request(`/words/${id}/sets`, {
+    method: 'PUT',
+    body: JSON.stringify({ setIds: Array.isArray(setIds) ? setIds : [] }),
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(messageFromStatusAndBody(r.status, text));
+  return JSON.parse(text);
 }
 
 export async function addWord(word) {

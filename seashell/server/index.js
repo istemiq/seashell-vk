@@ -9,11 +9,17 @@ import cors from 'cors';
 import {
   initDb,
   listWords,
+  listWordsInSet,
   getWordWithExamples,
   insertWordWithExamples,
   replaceExamplesForWord,
   deleteWord,
   findWordByLemma,
+  listSets,
+  createSet,
+  renameSet,
+  deleteSetAndOrphanWords,
+  replaceWordSets,
 } from './db.js';
 import { generateWordExamples, generatePracticeTurn, tlsInsecure } from './gigachat.js';
 
@@ -77,8 +83,73 @@ app.post('/api/practice/turn', async (req, res) => {
 // --- Словарь: список, карточка, добавление, удаление, обновление примеров ---
 app.get('/api/words', async (req, res) => {
   try {
-    const rows = await listWords(req.vkUserId);
+    const setIdRaw = req.query?.setId;
+    const setId = setIdRaw != null && setIdRaw !== '' ? parseInt(String(setIdRaw), 10) : NaN;
+    const rows =
+      Number.isFinite(setId) && setId > 0
+        ? await listWordsInSet(req.vkUserId, setId)
+        : await listWords(req.vkUserId);
     res.json({ words: rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// --- Сеты слов ---
+app.get('/api/sets', async (req, res) => {
+  try {
+    const rows = await listSets(req.vkUserId);
+    res.json({ sets: rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/sets', async (req, res) => {
+  const name = String(req.body?.name ?? '').trim().replace(/\s+/g, ' ');
+  if (!name || name.length > 80) {
+    return res.status(400).json({ error: 'Invalid name' });
+  }
+  try {
+    const created = await createSet(req.vkUserId, name);
+    res.status(201).json(created);
+  } catch (e) {
+    console.error(e);
+    // unique violation
+    if (String(e?.code) === '23505') {
+      return res.status(409).json({ error: 'Set already exists' });
+    }
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.patch('/api/sets/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const name = String(req.body?.name ?? '').trim().replace(/\s+/g, ' ');
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+  if (!name || name.length > 80) return res.status(400).json({ error: 'Invalid name' });
+  try {
+    const updated = await renameSet(req.vkUserId, id, name);
+    if (!updated) return res.status(404).json({ error: 'Not found' });
+    res.json(updated);
+  } catch (e) {
+    console.error(e);
+    if (String(e?.code) === '23505') {
+      return res.status(409).json({ error: 'Set already exists' });
+    }
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.delete('/api/sets/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+  try {
+    const r = await deleteSetAndOrphanWords(req.vkUserId, id);
+    if (!r.deleted) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true, removedWordIds: r.removedWordIds });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Database error' });
@@ -93,6 +164,20 @@ app.get('/api/words/:id', async (req, res) => {
       return res.status(404).json({ error: 'Not found' });
     }
     res.json(row);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.put('/api/words/:id/sets', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'Invalid word id' });
+  const setIds = Array.isArray(req.body?.setIds) ? req.body.setIds : [];
+  try {
+    const out = await replaceWordSets(req.vkUserId, id, setIds);
+    if (!out) return res.status(404).json({ error: 'Not found' });
+    res.json({ setIds: out });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Database error' });

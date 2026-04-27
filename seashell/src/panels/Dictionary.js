@@ -19,6 +19,8 @@ import {
   Footnote,
   Text,
   Separator,
+  Checkbox,
+  Select,
 } from '@vkontakte/vkui';
 import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import PropTypes from 'prop-types';
@@ -73,6 +75,13 @@ export const Dictionary = ({ id }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const [sets, setSets] = useState([]);
+  const [setsLoading, setSetsLoading] = useState(false);
+  const [activeSetId, setActiveSetId] = useState('all'); // 'all' | number
+  const [manageSetsOpen, setManageSetsOpen] = useState(false);
+  const [newSetName, setNewSetName] = useState('');
+  const [creatingSet, setCreatingSet] = useState(false);
+
   const [newWord, setNewWord] = useState('');
   const [adding, setAdding] = useState(false);
 
@@ -81,6 +90,8 @@ export const Dictionary = ({ id }) => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [exampleIdx, setExampleIdx] = useState(0);
+  const [editingWordSets, setEditingWordSets] = useState(false);
+  const [pendingSetIds, setPendingSetIds] = useState([]);
 
   // Fallback vk_user_id для API вне VK WebView.
   useEffect(() => {
@@ -114,28 +125,50 @@ export const Dictionary = ({ id }) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.fetchWords();
+      const data =
+        activeSetId === 'all'
+          ? await api.fetchWords()
+          : await api.fetchWordsInSet(activeSetId);
       setWords(data.words || []);
     } catch (e) {
       setError(e.message || 'Ошибка загрузки');
     } finally {
       setLoading(false);
     }
-  }, [vkUserId]);
+  }, [vkUserId, activeSetId]);
 
   useEffect(() => {
     loadList();
   }, [loadList]);
+
+  const loadSets = useCallback(async () => {
+    if (!vkUserId) return;
+    setSetsLoading(true);
+    try {
+      const data = await api.fetchSets();
+      setSets(Array.isArray(data.sets) ? data.sets : []);
+    } catch (e) {
+      setError(e.message || 'Ошибка загрузки сетов');
+    } finally {
+      setSetsLoading(false);
+    }
+  }, [vkUserId]);
+
+  useEffect(() => {
+    loadSets();
+  }, [loadSets]);
 
   const openWord = async (wordId) => {
     if (!vkUserId) return;
     setSelectedId(wordId);
     setDetailLoading(true);
     setExampleIdx(0);
+    setEditingWordSets(false);
     setError(null);
     try {
       const d = await api.fetchWord(wordId);
       setDetail(d);
+      setPendingSetIds(Array.isArray(d?.setIds) ? d.setIds : []);
     } catch (e) {
       setError(e.message || 'Ошибка');
       setSelectedId(null);
@@ -148,6 +181,8 @@ export const Dictionary = ({ id }) => {
     setSelectedId(null);
     setDetail(null);
     setExampleIdx(0);
+    setEditingWordSets(false);
+    setPendingSetIds([]);
   };
 
   const addWord = async () => {
@@ -205,6 +240,93 @@ export const Dictionary = ({ id }) => {
 
   const headerTitle = selectedId ? (detail?.word || '…') : 'Словарь';
 
+  const setNameById = useCallback(
+    (sid) => sets.find((s) => Number(s.id) === Number(sid))?.name ?? null,
+    [sets],
+  );
+
+  const selectedSetNames =
+    Array.isArray(detail?.setIds) && detail.setIds.length
+      ? detail.setIds.map((sid) => setNameById(sid)).filter(Boolean)
+      : [];
+
+  const createNewSet = async () => {
+    const name = newSetName.trim().replace(/\s+/g, ' ');
+    if (!name || !vkUserId) return;
+    setCreatingSet(true);
+    setError(null);
+    try {
+      await api.createSet(name);
+      setNewSetName('');
+      await loadSets();
+    } catch (e) {
+      setError(e.message || 'Не удалось создать сет');
+    } finally {
+      setCreatingSet(false);
+    }
+  };
+
+  const doRenameSet = async (sid) => {
+    const cur = sets.find((s) => Number(s.id) === Number(sid));
+    const next = window.prompt('Новое название сета', cur?.name ?? '');
+    if (next == null) return;
+    const name = String(next).trim().replace(/\s+/g, ' ');
+    if (!name) return;
+    setError(null);
+    try {
+      await api.renameSet(sid, name);
+      await loadSets();
+    } catch (e) {
+      setError(e.message || 'Не удалось переименовать');
+    }
+  };
+
+  const doDeleteSet = async (sid) => {
+    if (
+      !window.confirm(
+        'Сет будет удалён. Слова, которые останутся без сетов, тоже будут удалены. Продолжить?',
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    try {
+      const r = await api.deleteSet(sid);
+      const removedWordIds = Array.isArray(r?.removedWordIds) ? r.removedWordIds : [];
+      if (activeSetId !== 'all' && Number(activeSetId) === Number(sid)) {
+        setActiveSetId('all');
+      }
+      if (selectedId && removedWordIds.some((x) => Number(x) === Number(selectedId))) {
+        closeWord();
+      }
+      await loadSets();
+      await loadList();
+    } catch (e) {
+      setError(e.message || 'Не удалось удалить сет');
+    }
+  };
+
+  const togglePendingSet = (sid) => {
+    const n = Number(sid);
+    setPendingSetIds((prev) =>
+      prev.some((x) => Number(x) === n) ? prev.filter((x) => Number(x) !== n) : [...prev, n],
+    );
+  };
+
+  const saveWordSets = async () => {
+    if (!selectedId || !vkUserId) return;
+    setError(null);
+    try {
+      const r = await api.updateWordSets(selectedId, pendingSetIds);
+      const out = Array.isArray(r?.setIds) ? r.setIds : pendingSetIds;
+      setDetail((prev) => (prev ? { ...prev, setIds: out } : prev));
+      setEditingWordSets(false);
+      await loadList();
+    } catch (e) {
+      setError(e.message || 'Не удалось сохранить сеты');
+    }
+  };
+
   return (
     <Panel id={id}>
       <PanelHeader before={<PanelHeaderBack onClick={() => (selectedId ? closeWord() : routeNavigator.back())} />}>
@@ -228,6 +350,102 @@ export const Dictionary = ({ id }) => {
       {/* Список слов и форма добавления */}
       {!selectedId && vkUserId && (
         <>
+          <Group
+            header={
+              <Header
+                mode="secondary"
+                aside={
+                  <Button
+                    type="button"
+                    mode="tertiary"
+                    size="s"
+                    disabled={setsLoading}
+                    onClick={() => setManageSetsOpen((v) => !v)}
+                  >
+                    {manageSetsOpen ? 'Скрыть' : 'Управлять'}
+                  </Button>
+                }
+              >
+                Сеты
+              </Header>
+            }
+          >
+            <FormItem top="Фильтр слов">
+              <Select
+                value={String(activeSetId)}
+                onChange={(e) => {
+                  const v = String(e.target.value);
+                  setActiveSetId(v === 'all' ? 'all' : parseInt(v, 10));
+                }}
+                options={[
+                  { label: 'Все слова', value: 'all' },
+                  ...sets.map((s) => ({ label: s.name, value: String(s.id) })),
+                ]}
+              />
+            </FormItem>
+
+            {manageSetsOpen && (
+              <>
+                <Separator style={{ margin: '12px 0' }} />
+                <FormItem top="Новый сет">
+                  <Input
+                    value={newSetName}
+                    onChange={(e) => setNewSetName(e.target.value)}
+                    placeholder="например: Еда, Путешествия…"
+                    disabled={creatingSet}
+                  />
+                </FormItem>
+                <FormItem>
+                  <Button
+                    type="button"
+                    size="l"
+                    stretched
+                    loading={creatingSet}
+                    disabled={!newSetName.trim()}
+                    onClick={createNewSet}
+                  >
+                    Создать сет
+                  </Button>
+                  <Footnote style={{ marginTop: 8 }}>
+                    Можно назначать слово в несколько сетов. При удалении сета слова без сетов удалятся.
+                  </Footnote>
+                </FormItem>
+
+                {setsLoading && (
+                  <Box style={{ display: 'flex', justifyContent: 'center', padding: 16 }}>
+                    <Spinner />
+                  </Box>
+                )}
+
+                {!setsLoading && sets.length === 0 && (
+                  <Box>
+                    <Text>Сетов пока нет — создай первый выше.</Text>
+                  </Box>
+                )}
+
+                {!setsLoading &&
+                  sets.map((s) => (
+                    <Cell
+                      key={s.id}
+                      subtitle="Управление сетом"
+                      after={
+                        <Box style={{ display: 'flex', gap: 8 }}>
+                          <Button type="button" mode="tertiary" size="s" onClick={() => doRenameSet(s.id)}>
+                            Переименовать
+                          </Button>
+                          <Button type="button" mode="tertiary" size="s" onClick={() => doDeleteSet(s.id)}>
+                            Удалить
+                          </Button>
+                        </Box>
+                      }
+                    >
+                      {s.name}
+                    </Cell>
+                  ))}
+              </>
+            )}
+          </Group>
+
           <Group header={<Header mode="secondary">Новое слово</Header>}>
             <FormItem top="Английское слово или фраза">
               <Input
@@ -301,6 +519,60 @@ export const Dictionary = ({ id }) => {
           )}
           {!detailLoading && detail && (
             <>
+              <Box style={{ marginBottom: 12 }}>
+                <Text weight="2">Сеты</Text>
+                {selectedSetNames.length ? (
+                  <Text style={{ marginTop: 6, lineHeight: 1.45 }}>{selectedSetNames.join(', ')}</Text>
+                ) : (
+                  <Footnote style={{ marginTop: 6 }}>Пока без сетов.</Footnote>
+                )}
+
+                <Box style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                  <Button
+                    type="button"
+                    mode="secondary"
+                    size="m"
+                    disabled={setsLoading || sets.length === 0}
+                    onClick={() => setEditingWordSets((v) => !v)}
+                  >
+                    {editingWordSets ? 'Скрыть' : 'Изменить сеты'}
+                  </Button>
+                  <Button type="button" mode="tertiary" size="m" disabled={setsLoading} onClick={loadSets}>
+                    Обновить список сетов
+                  </Button>
+                </Box>
+
+                {editingWordSets && (
+                  <Box style={{ marginTop: 12 }}>
+                    {sets.length === 0 ? (
+                      <Footnote>Сначала создай хотя бы один сет (в списке слов).</Footnote>
+                    ) : (
+                      <>
+                        {sets.map((s) => (
+                          <Checkbox
+                            key={s.id}
+                            checked={pendingSetIds.some((x) => Number(x) === Number(s.id))}
+                            onChange={() => togglePendingSet(s.id)}
+                          >
+                            {s.name}
+                          </Checkbox>
+                        ))}
+                        <Button
+                          size="l"
+                          stretched
+                          style={{ marginTop: 12 }}
+                          disabled={refreshing}
+                          onClick={saveWordSets}
+                        >
+                          Сохранить сеты
+                        </Button>
+                      </>
+                    )}
+                  </Box>
+                )}
+                <Separator style={{ margin: '12px 0' }} />
+              </Box>
+
               <Box>
                 <Text weight="2">Значение слова</Text>
                 {detail.gloss_ru ? (
