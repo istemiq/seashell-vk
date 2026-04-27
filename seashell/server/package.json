@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "check-gigachat": "node scripts/check-gigachat-key.js"
   },
   "engines": {
     "node": ">=22.5.0"

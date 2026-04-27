@@ -67,7 +67,13 @@ async function getAccessToken() {
     return cached.token;
   }
 
-  const key = process.env.GIGACHAT_API_KEY;
+  // В .env легко случайно оставить перенос/пробел, кавычки или даже префикс "Basic ".
+  // GigaChat OAuth очень чувствителен к таким артефактам и отвечает "Can't decode Authorization header".
+  const key = String(process.env.GIGACHAT_API_KEY || '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/^basic\s+/i, '')
+    .replace(/\s+/g, '');
   if (!key) {
     throw new Error('GIGACHAT_API_KEY is not set');
   }
