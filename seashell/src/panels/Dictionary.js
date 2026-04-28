@@ -20,7 +20,6 @@ import {
   Text,
   Separator,
   Checkbox,
-  Select,
 } from '@vkontakte/vkui';
 import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import PropTypes from 'prop-types';
@@ -77,8 +76,8 @@ export const Dictionary = ({ id }) => {
 
   const [sets, setSets] = useState([]);
   const [setsLoading, setSetsLoading] = useState(false);
-  const [activeSetId, setActiveSetId] = useState('all'); // 'all' | number
-  const [manageSetsOpen, setManageSetsOpen] = useState(false);
+  const [screen, setScreen] = useState('dictionary'); // 'dictionary' | 'groups' | 'group'
+  const [activeSetId, setActiveSetId] = useState(null); // number | null
   const [newSetName, setNewSetName] = useState('');
   const [creatingSet, setCreatingSet] = useState(false);
 
@@ -126,16 +125,16 @@ export const Dictionary = ({ id }) => {
     setError(null);
     try {
       const data =
-        activeSetId === 'all'
-          ? await api.fetchWords()
-          : await api.fetchWordsInSet(activeSetId);
+        screen === 'group' && Number.isFinite(activeSetId) && activeSetId > 0
+          ? await api.fetchWordsInSet(activeSetId)
+          : await api.fetchWords();
       setWords(data.words || []);
     } catch (e) {
       setError(e.message || 'Ошибка загрузки');
     } finally {
       setLoading(false);
     }
-  }, [vkUserId, activeSetId]);
+  }, [vkUserId, screen, activeSetId]);
 
   useEffect(() => {
     loadList();
@@ -148,7 +147,7 @@ export const Dictionary = ({ id }) => {
       const data = await api.fetchSets();
       setSets(Array.isArray(data.sets) ? data.sets : []);
     } catch (e) {
-      setError(e.message || 'Ошибка загрузки сетов');
+      setError(e.message || 'Ошибка загрузки групп');
     } finally {
       setSetsLoading(false);
     }
@@ -191,7 +190,15 @@ export const Dictionary = ({ id }) => {
     setAdding(true);
     setError(null);
     try {
-      await api.addWord(w);
+      const created = await api.addWord(w);
+      // Если мы внутри группы — сразу назначаем новое слово в эту группу.
+      if (screen === 'group' && Number.isFinite(activeSetId) && activeSetId > 0 && created?.id) {
+        try {
+          await api.updateWordSets(created.id, [activeSetId]);
+        } catch {
+          // не блокируем добавление слова, если назначение группы не удалось
+        }
+      }
       setNewWord('');
       await loadList();
     } catch (e) {
@@ -239,6 +246,10 @@ export const Dictionary = ({ id }) => {
   const currentExampleRu = lineFromExampleField(ex?.translation);
 
   const headerTitle = selectedId ? (detail?.word || '…') : 'Словарь';
+  const activeSetName =
+    screen === 'group' && Number.isFinite(activeSetId)
+      ? sets.find((s) => Number(s.id) === Number(activeSetId))?.name ?? 'Группа'
+      : null;
 
   const setNameById = useCallback(
     (sid) => sets.find((s) => Number(s.id) === Number(sid))?.name ?? null,
@@ -260,7 +271,7 @@ export const Dictionary = ({ id }) => {
       setNewSetName('');
       await loadSets();
     } catch (e) {
-      setError(e.message || 'Не удалось создать сет');
+      setError(e.message || 'Не удалось создать группу');
     } finally {
       setCreatingSet(false);
     }
@@ -268,7 +279,7 @@ export const Dictionary = ({ id }) => {
 
   const doRenameSet = async (sid) => {
     const cur = sets.find((s) => Number(s.id) === Number(sid));
-    const next = window.prompt('Новое название сета', cur?.name ?? '');
+    const next = window.prompt('Новое название группы', cur?.name ?? '');
     if (next == null) return;
     const name = String(next).trim().replace(/\s+/g, ' ');
     if (!name) return;
@@ -284,7 +295,7 @@ export const Dictionary = ({ id }) => {
   const doDeleteSet = async (sid) => {
     if (
       !window.confirm(
-        'Сет будет удалён. Слова, которые останутся без сетов, тоже будут удалены. Продолжить?',
+        'Группа будет удалена. Слова, которые останутся без групп, тоже будут удалены. Продолжить?',
       )
     ) {
       return;
@@ -293,8 +304,9 @@ export const Dictionary = ({ id }) => {
     try {
       const r = await api.deleteSet(sid);
       const removedWordIds = Array.isArray(r?.removedWordIds) ? r.removedWordIds : [];
-      if (activeSetId !== 'all' && Number(activeSetId) === Number(sid)) {
-        setActiveSetId('all');
+      if (screen === 'group' && Number(activeSetId) === Number(sid)) {
+        setScreen('dictionary');
+        setActiveSetId(null);
       }
       if (selectedId && removedWordIds.some((x) => Number(x) === Number(selectedId))) {
         closeWord();
@@ -302,7 +314,7 @@ export const Dictionary = ({ id }) => {
       await loadSets();
       await loadList();
     } catch (e) {
-      setError(e.message || 'Не удалось удалить сет');
+      setError(e.message || 'Не удалось удалить группу');
     }
   };
 
@@ -323,14 +335,27 @@ export const Dictionary = ({ id }) => {
       setEditingWordSets(false);
       await loadList();
     } catch (e) {
-      setError(e.message || 'Не удалось сохранить сеты');
+      setError(e.message || 'Не удалось сохранить группы');
     }
+  };
+
+  const onBack = () => {
+    if (selectedId) return closeWord();
+    if (screen === 'group') {
+      setScreen('groups');
+      return;
+    }
+    if (screen === 'groups') {
+      setScreen('dictionary');
+      return;
+    }
+    routeNavigator.back();
   };
 
   return (
     <Panel id={id}>
-      <PanelHeader before={<PanelHeaderBack onClick={() => (selectedId ? closeWord() : routeNavigator.back())} />}>
-        {headerTitle}
+      <PanelHeader before={<PanelHeaderBack onClick={onBack} />}>
+        {selectedId ? headerTitle : screen === 'group' ? activeSetName : 'Словарь'}
       </PanelHeader>
 
       {!vkUserId && !error && (
@@ -350,103 +375,89 @@ export const Dictionary = ({ id }) => {
       {/* Список слов и форма добавления */}
       {!selectedId && vkUserId && (
         <>
-          <Group
-            header={
-              <Header
-                mode="secondary"
-                aside={
-                  <Button
-                    type="button"
-                    mode="tertiary"
-                    size="s"
-                    disabled={setsLoading}
-                    onClick={() => setManageSetsOpen((v) => !v)}
+          {screen === 'dictionary' && (
+            <Group header={<Header mode="secondary">Группы</Header>}>
+              <FormItem>
+                <Button
+                  type="button"
+                  size="l"
+                  stretched
+                  disabled={setsLoading}
+                  onClick={() => setScreen('groups')}
+                >
+                  Мои группы
+                </Button>
+                <Footnote style={{ marginTop: 8 }}>
+                  Группа — это «подсловарь». Например: «Кухня», «Бизнес». Внутри группы показываются только её слова.
+                </Footnote>
+              </FormItem>
+            </Group>
+          )}
+
+          {screen === 'groups' && (
+            <Group header={<Header mode="secondary">Мои группы</Header>}>
+              <FormItem top="Новая группа">
+                <Input
+                  value={newSetName}
+                  onChange={(e) => setNewSetName(e.target.value)}
+                  placeholder="например: Кухня"
+                  disabled={creatingSet}
+                />
+              </FormItem>
+              <FormItem>
+                <Button
+                  type="button"
+                  size="l"
+                  stretched
+                  loading={creatingSet}
+                  disabled={!newSetName.trim()}
+                  onClick={createNewSet}
+                >
+                  Создать группу
+                </Button>
+              </FormItem>
+
+              {setsLoading && (
+                <Box style={{ display: 'flex', justifyContent: 'center', padding: 16 }}>
+                  <Spinner />
+                </Box>
+              )}
+
+              {!setsLoading && sets.length === 0 && (
+                <Box>
+                  <Text>Групп пока нет — создай первую выше.</Text>
+                </Box>
+              )}
+
+              {!setsLoading &&
+                sets.map((s) => (
+                  <Cell
+                    key={s.id}
+                    onClick={() => {
+                      setActiveSetId(Number(s.id));
+                      setScreen('group');
+                      setEditingWordSets(false);
+                    }}
+                    subtitle="Открыть группу"
+                    after={
+                      <Box style={{ display: 'flex', gap: 8 }}>
+                        <Button type="button" mode="tertiary" size="s" onClick={() => doRenameSet(s.id)}>
+                          Переименовать
+                        </Button>
+                        <Button type="button" mode="tertiary" size="s" onClick={() => doDeleteSet(s.id)}>
+                          Удалить
+                        </Button>
+                      </Box>
+                    }
                   >
-                    {manageSetsOpen ? 'Скрыть' : 'Управлять'}
-                  </Button>
-                }
-              >
-                Сеты
-              </Header>
-            }
-          >
-            <FormItem top="Фильтр слов">
-              <Select
-                value={String(activeSetId)}
-                onChange={(e) => {
-                  const v = String(e.target.value);
-                  setActiveSetId(v === 'all' ? 'all' : parseInt(v, 10));
-                }}
-                options={[
-                  { label: 'Все слова', value: 'all' },
-                  ...sets.map((s) => ({ label: s.name, value: String(s.id) })),
-                ]}
-              />
-            </FormItem>
+                    {s.name}
+                  </Cell>
+                ))}
+            </Group>
+          )}
 
-            {manageSetsOpen && (
-              <>
-                <Separator style={{ margin: '12px 0' }} />
-                <FormItem top="Новый сет">
-                  <Input
-                    value={newSetName}
-                    onChange={(e) => setNewSetName(e.target.value)}
-                    placeholder="например: Еда, Путешествия…"
-                    disabled={creatingSet}
-                  />
-                </FormItem>
-                <FormItem>
-                  <Button
-                    type="button"
-                    size="l"
-                    stretched
-                    loading={creatingSet}
-                    disabled={!newSetName.trim()}
-                    onClick={createNewSet}
-                  >
-                    Создать сет
-                  </Button>
-                  <Footnote style={{ marginTop: 8 }}>
-                    Можно назначать слово в несколько сетов. При удалении сета слова без сетов удалятся.
-                  </Footnote>
-                </FormItem>
-
-                {setsLoading && (
-                  <Box style={{ display: 'flex', justifyContent: 'center', padding: 16 }}>
-                    <Spinner />
-                  </Box>
-                )}
-
-                {!setsLoading && sets.length === 0 && (
-                  <Box>
-                    <Text>Сетов пока нет — создай первый выше.</Text>
-                  </Box>
-                )}
-
-                {!setsLoading &&
-                  sets.map((s) => (
-                    <Cell
-                      key={s.id}
-                      subtitle="Управление сетом"
-                      after={
-                        <Box style={{ display: 'flex', gap: 8 }}>
-                          <Button type="button" mode="tertiary" size="s" onClick={() => doRenameSet(s.id)}>
-                            Переименовать
-                          </Button>
-                          <Button type="button" mode="tertiary" size="s" onClick={() => doDeleteSet(s.id)}>
-                            Удалить
-                          </Button>
-                        </Box>
-                      }
-                    >
-                      {s.name}
-                    </Cell>
-                  ))}
-              </>
-            )}
-          </Group>
-
-          <Group header={<Header mode="secondary">Новое слово</Header>}>
+          {(screen === 'dictionary' || screen === 'group') && (
+            <Group header={<Header mode="secondary">{screen === 'group' ? 'Новое слово в группе' : 'Новое слово'}</Header>}>
             <FormItem top="Английское слово или фраза">
               <Input
                 value={newWord}
@@ -467,45 +478,50 @@ export const Dictionary = ({ id }) => {
                 Добавить слово
               </Button>
               <Footnote style={{ marginTop: 8 }}>
-                Подберём примеры и переводы автоматически. «Другой пример» переключает сохранённые карточки.
+                {screen === 'group'
+                  ? 'Слово добавится в эту группу. Примеры и переводы подберём автоматически.'
+                  : 'Подберём примеры и переводы автоматически. «Другой пример» переключает сохранённые карточки.'}
               </Footnote>
             </FormItem>
-          </Group>
+            </Group>
+          )}
 
-          <Group header={<Header mode="secondary">Мои слова</Header>}>
-            {loading && (
-              <Box style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
-                <Spinner />
-              </Box>
-            )}
-            {!loading && words.length === 0 && (
-              <Box>
-                <Text>Пока пусто — добавь первое слово выше.</Text>
-              </Box>
-            )}
-            {!loading &&
-              words.map((w) => (
-                <Cell
-                  key={w.id}
-                  onClick={() => openWord(w.id)}
-                  subtitle={`Примеров: ${w.example_count ?? 0}`}
-                  after={
-                    <Button
-                      type="button"
-                      mode="tertiary"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeWord(w.id, e);
-                      }}
-                    >
-                      Удалить
-                    </Button>
-                  }
-                >
-                  {w.word}
-                </Cell>
-              ))}
-          </Group>
+          {(screen === 'dictionary' || screen === 'group') && (
+            <Group header={<Header mode="secondary">{screen === 'group' ? 'Слова группы' : 'Мои слова'}</Header>}>
+              {loading && (
+                <Box style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
+                  <Spinner />
+                </Box>
+              )}
+              {!loading && words.length === 0 && (
+                <Box>
+                  <Text>Пока пусто — добавь первое слово выше.</Text>
+                </Box>
+              )}
+              {!loading &&
+                words.map((w) => (
+                  <Cell
+                    key={w.id}
+                    onClick={() => openWord(w.id)}
+                    subtitle={`Примеров: ${w.example_count ?? 0}`}
+                    after={
+                      <Button
+                        type="button"
+                        mode="tertiary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeWord(w.id, e);
+                        }}
+                      >
+                        Удалить
+                      </Button>
+                    }
+                  >
+                    {w.word}
+                  </Cell>
+                ))}
+            </Group>
+          )}
         </>
       )}
 
@@ -520,11 +536,11 @@ export const Dictionary = ({ id }) => {
           {!detailLoading && detail && (
             <>
               <Box style={{ marginBottom: 12 }}>
-                <Text weight="2">Сеты</Text>
+                <Text weight="2">Группы</Text>
                 {selectedSetNames.length ? (
                   <Text style={{ marginTop: 6, lineHeight: 1.45 }}>{selectedSetNames.join(', ')}</Text>
                 ) : (
-                  <Footnote style={{ marginTop: 6 }}>Пока без сетов.</Footnote>
+                  <Footnote style={{ marginTop: 6 }}>Пока без групп.</Footnote>
                 )}
 
                 <Box style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
@@ -532,20 +548,20 @@ export const Dictionary = ({ id }) => {
                     type="button"
                     mode="secondary"
                     size="m"
-                    disabled={setsLoading || sets.length === 0}
+                    disabled={setsLoading}
                     onClick={() => setEditingWordSets((v) => !v)}
                   >
-                    {editingWordSets ? 'Скрыть' : 'Изменить сеты'}
+                    {editingWordSets ? 'Скрыть' : 'Изменить группы'}
                   </Button>
                   <Button type="button" mode="tertiary" size="m" disabled={setsLoading} onClick={loadSets}>
-                    Обновить список сетов
+                    Обновить список групп
                   </Button>
                 </Box>
 
                 {editingWordSets && (
                   <Box style={{ marginTop: 12 }}>
                     {sets.length === 0 ? (
-                      <Footnote>Сначала создай хотя бы один сет (в списке слов).</Footnote>
+                      <Footnote>Сначала создай хотя бы одну группу (в списке слов, кнопка «Управлять группами»).</Footnote>
                     ) : (
                       <>
                         {sets.map((s) => (
@@ -564,7 +580,7 @@ export const Dictionary = ({ id }) => {
                           disabled={refreshing}
                           onClick={saveWordSets}
                         >
-                          Сохранить сеты
+                          Сохранить группы
                         </Button>
                       </>
                     )}
