@@ -207,4 +207,31 @@ export async function refreshWordExamples(wordId) {
   return JSON.parse(text);
 }
 
+export async function fetchTtsWav(text) {
+  const t = String(text ?? '').trim();
+  if (!t) throw new Error('Empty text');
+  if (t.length > 400) throw new Error('Слишком длинно для озвучки (лимит 400 символов).');
+  const vkUserId = resolveVkUserId();
+  if (vkUserId == null) {
+    throw new Error('Не удалось определить vk_user_id (нет в URL и не задан fallback)');
+  }
+  let r;
+  try {
+    r = await fetch(apiUrl(`/tts?text=${encodeURIComponent(t)}`), {
+      headers: {
+        'X-VK-User-Id': String(vkUserId),
+      },
+    });
+  } catch (e) {
+    if (e?.name === 'TypeError') {
+      throw new Error(`${API_DOWN_HINT} (${e.message})`);
+    }
+    throw e;
+  }
+  if (!r.ok) {
+    throw new Error(await readHttpError(r));
+  }
+  return r.blob();
+}
+
 export { resolveVkUserId };

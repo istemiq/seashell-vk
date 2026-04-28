@@ -32,6 +32,7 @@ import * as practiceApi from '../api/practiceApi.js';
 import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
 import { withTimeout } from '../utils/withTimeout.js';
 import { loadSettings } from '../utils/settings.js';
+import { speakEnglish } from '../utils/tts.js';
 
 const BRIDGE_GET_USER_MS = 8000;
 const DEV_FALLBACK_VK_USER_ID = Number(import.meta.env.VITE_DEV_VK_USER_ID) || 1000001;
@@ -171,16 +172,10 @@ export const Practice = ({ id }) => {
     }
   }, [listening, loading, submitUserText]);
 
-  const canSpeak = typeof window !== 'undefined' && !!window.speechSynthesis;
   const speakReply = (text) => {
     const s = loadSettings();
     if (!s.ttsEnabled) return;
-    if (!canSpeak || !text) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-US';
-    u.rate = Number(s.ttsRate) || 0.95;
-    window.speechSynthesis.speak(u);
+    void speakEnglish(text);
   };
 
   const selectedTextOr = (fallback) => {
@@ -304,7 +299,6 @@ export const Practice = ({ id }) => {
                   size="m"
                   mode="tertiary"
                   style={{ marginTop: 8 }}
-                  disabled={!canSpeak}
                   onClick={() => speakReply(t.reply)}
                 >
                   Прослушать ответ

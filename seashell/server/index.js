@@ -6,6 +6,7 @@
 import './load-env.js';
 import express from 'express';
 import cors from 'cors';
+import { spawn } from 'node:child_process';
 import {
   initDb,
   listWords,
@@ -58,6 +59,70 @@ function normalizeWord(w) {
     .trim()
     .replace(/\s+/g, ' ');
 }
+
+function normalizeTtsText(t) {
+  return String(t || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function pickEspeakCommand() {
+  // На разных системах пакет может ставить разные бинарники.
+  return process.env.ESPEAK_CMD?.trim() || 'espeak-ng';
+}
+
+// --- TTS (фолбэк для мобильных WebView, где Web Speech API молчит) ---
+app.get('/api/tts', async (req, res) => {
+  const text = normalizeTtsText(req.query?.text ?? '');
+  if (!text) return res.status(400).json({ error: 'Empty text' });
+  if (text.length > 400) return res.status(400).json({ error: 'Text too long (max 400 chars)' });
+
+  const cmd = pickEspeakCommand();
+  const args = [
+    '--stdout',
+    '-v',
+    'en-us',
+    '-s',
+    String(Number(process.env.ESPEAK_SPEED) || 165),
+    text,
+  ];
+
+  let child;
+  try {
+    child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) {
+    return res.status(501).json({
+      error:
+        'TTS is not available on the server. Install espeak-ng (apt install espeak-ng) or set ESPEAK_CMD to an available binary.',
+    });
+  }
+
+  let stderr = '';
+  child.stderr.on('data', (d) => {
+    stderr += String(d);
+    if (stderr.length > 2000) stderr = stderr.slice(-2000);
+  });
+
+  child.on('error', () => {
+    res.status(501).json({
+      error:
+        'TTS is not available on the server. Install espeak-ng (apt install espeak-ng) or set ESPEAK_CMD to an available binary.',
+    });
+  });
+
+  res.setHeader('Content-Type', 'audio/wav');
+  res.setHeader('Cache-Control', 'no-store');
+  child.stdout.pipe(res);
+
+  child.on('close', (code) => {
+    if (code === 0) return;
+    try {
+      res.end();
+    } catch {
+      // ignore
+    }
+  });
+});
 
 // --- Разговорная практика (один ход диалога через GigaChat) ---
 app.post('/api/practice/turn', async (req, res) => {
