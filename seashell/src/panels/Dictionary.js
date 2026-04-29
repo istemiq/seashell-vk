@@ -621,7 +621,11 @@ export const Dictionary = ({ id }) => {
                   size="l"
                   stretched
                   disabled={!currentExampleText || refreshing}
-                  onClick={() => speakEnglish(currentExampleText)}
+                  onClick={() => {
+                    void speakEnglish(currentExampleText).catch((e) => {
+                      setError(e?.message || 'Озвучка недоступна');
+                    });
+                  }}
                 >
                   Прослушать
                 </Button>

@@ -175,7 +175,15 @@ export const Practice = ({ id }) => {
   const speakReply = (text) => {
     const s = loadSettings();
     if (!s.ttsEnabled) return;
-    void speakEnglish(text);
+    void speakEnglish(text).catch((e) => {
+      const msg = e?.message || 'Озвучка недоступна';
+      setNotice(msg);
+      setSnackbar(
+        <Snackbar onClose={() => setSnackbar(null)} duration={3500}>
+          {msg}
+        </Snackbar>,
+      );
+    });
   };
 
   const selectedTextOr = (fallback) => {

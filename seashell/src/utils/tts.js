@@ -1,22 +1,60 @@
-import { fetchTtsWav } from '../api/dictionaryApi.js';
 import { loadSettings } from './settings.js';
 
-let audioSingleton = null;
-let objectUrlInUse = null;
-
 function canUseWebSpeech() {
-  return typeof window !== 'undefined' && !!window.speechSynthesis && typeof window.SpeechSynthesisUtterance === 'function';
+  return (
+    typeof window !== 'undefined' &&
+    !!window.speechSynthesis &&
+    typeof window.SpeechSynthesisUtterance === 'function'
+  );
 }
 
-function tryWebSpeech(text) {
+function isEnglishVoice(v) {
+  const lang = String(v?.lang || '').toLowerCase();
+  return lang.startsWith('en');
+}
+
+function pickEnglishVoice() {
+  const voices = window.speechSynthesis.getVoices?.() || [];
+  const en = voices.filter(isEnglishVoice);
+  if (!en.length) return null;
+
+  // Пробуем сначала более "человечные" голоса, если есть.
+  const preferred = en.find((v) => /google|microsoft|siri|alex|zira|mark/i.test(String(v.name || '')));
+  return preferred || en[0];
+}
+
+async function ensureVoicesLoaded(timeoutMs = 1200) {
+  if (!canUseWebSpeech()) return;
+  const initial = window.speechSynthesis.getVoices?.() || [];
+  if (initial.length) return;
+  await new Promise((resolve) => {
+    let done = false;
+    const t = setTimeout(() => {
+      if (done) return;
+      done = true;
+      resolve();
+    }, timeoutMs);
+    window.speechSynthesis.onvoiceschanged = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(t);
+      resolve();
+    };
+  });
+}
+
+async function tryWebSpeech(text) {
   const s = loadSettings();
   if (!s.ttsEnabled) return false;
   if (!canUseWebSpeech()) return false;
   try {
+    await ensureVoicesLoaded();
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'en-US';
     u.rate = Number(s.ttsRate) || 0.95;
+    const voice = pickEnglishVoice();
+    if (voice) u.voice = voice;
     window.speechSynthesis.speak(u);
     return true;
   } catch {
@@ -24,61 +62,19 @@ function tryWebSpeech(text) {
   }
 }
 
-async function playServerTts(text) {
-  const s = loadSettings();
-  if (!s.ttsEnabled) return;
-
-  const blob = await fetchTtsWav(text);
-  const url = URL.createObjectURL(blob);
-
-  if (!audioSingleton) {
-    audioSingleton = new Audio();
-  }
-
-  if (objectUrlInUse) {
-    try {
-      URL.revokeObjectURL(objectUrlInUse);
-    } catch {
-      // ignore
-    }
-    objectUrlInUse = null;
-  }
-
-  objectUrlInUse = url;
-  audioSingleton.src = url;
-  audioSingleton.playbackRate = 1;
-  try {
-    await audioSingleton.play();
-  } finally {
-    const cleanup = () => {
-      audioSingleton?.removeEventListener?.('ended', cleanup);
-      if (objectUrlInUse) {
-        try {
-          URL.revokeObjectURL(objectUrlInUse);
-        } catch {
-          // ignore
-        }
-        objectUrlInUse = null;
-      }
-    };
-    audioSingleton.addEventListener('ended', cleanup, { once: true });
-  }
-}
-
 /**
  * Озвучка английского текста:
- * - сначала пробуем Web Speech API (быстро и бесплатно);
- * - если не удалось/недоступно — фолбэк на серверный TTS (/api/tts).
+ * - используем только Web Speech API (голос устройства).
  */
 export async function speakEnglish(text) {
   const t = String(text ?? '').trim();
   if (!t) return;
 
-  const started = tryWebSpeech(t);
-  if (started) {
-    // В некоторых WebView вызов принимается, но звук не стартует; серверный фолбэк всё равно доступен через кнопку повторно.
-    return;
+  const started = await tryWebSpeech(t);
+  if (!started) {
+    throw new Error(
+      'Озвучка недоступна в этом браузере/вью (часто VK WebView). Попробуй открыть в браузере или включить системный TTS на телефоне.',
+    );
   }
-  await playServerTts(t);
 }
 
