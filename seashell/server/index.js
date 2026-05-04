@@ -66,9 +66,8 @@ app.post('/api/practice/turn', async (req, res) => {
     return res.status(400).json({ error: 'Invalid text' });
   }
   const history = Array.isArray(req.body?.history) ? req.body.history : [];
-  const tone = typeof req.body?.tone === 'string' ? req.body.tone : undefined;
   try {
-    const turn = await generatePracticeTurn({ userText, history, tone });
+    const turn = await generatePracticeTurn({ userText, history });
     res.json({
       echo: turn.echo || userText,
       corrections: turn.corrections,
@@ -252,7 +251,11 @@ async function start() {
   await initDb();
   app.listen(PORT, '0.0.0.0', () => {
     const tls = process.env.GIGACHAT_TLS_INSECURE?.trim();
+    const model = String(process.env.GIGACHAT_MODEL_NAME || '').trim() || 'GigaChat';
     console.log(`API: http://0.0.0.0:${PORT} (PORT=${process.env.PORT ?? 'default 3001'})`);
+    console.log(
+      `GigaChat: model=${model} (из GIGACHAT_MODEL_NAME; пусто → в коде подставляется базовый GigaChat)`,
+    );
     console.log(
       `GigaChat TLS relaxed (undici): ${tlsInsecure() ? 'yes' : 'no'} | NODE_ENV=${process.env.NODE_ENV ?? '(не задан)'} | GIGACHAT_TLS_INSECURE=${tls ?? '(unset)'}`,
     );

@@ -1,18 +1,12 @@
-import { Panel, PanelHeader, PanelHeaderBack, Group, Header, FormItem, Switch, Slider, Select } from '@vkontakte/vkui';
-import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
+import { Panel, PanelHeader, PanelHeaderBack, Group, Header, FormItem, Switch, Slider } from '@vkontakte/vkui';
 import PropTypes from 'prop-types';
 import { useMemo, useState } from 'react';
 
 import { loadSettings, updateSettings } from '../utils/settings.js';
-
-const toneOptions = [
-  { label: 'Нейтрально', value: 'neutral' },
-  { label: 'Дружелюбно', value: 'friendly' },
-  { label: 'Строго (коротко и по делу)', value: 'strict' },
-];
+import { useNavigateBackOrHome } from '../utils/useNavigateBackOrHome.js';
 
 export const Settings = ({ id }) => {
-  const routeNavigator = useRouteNavigator();
+  const goBackOrHome = useNavigateBackOrHome();
   const initial = useMemo(() => loadSettings(), []);
   const [s, setS] = useState(initial);
 
@@ -23,7 +17,7 @@ export const Settings = ({ id }) => {
 
   return (
     <Panel id={id}>
-      <PanelHeader before={<PanelHeaderBack onClick={() => routeNavigator.back()} />}>Настройки</PanelHeader>
+      <PanelHeader before={<PanelHeaderBack onClick={() => void goBackOrHome()} />}>Настройки</PanelHeader>
 
       <Group header={<Header mode="secondary">Озвучка</Header>}>
         <FormItem top="Включить озвучку (TTS)">
@@ -37,16 +31,6 @@ export const Settings = ({ id }) => {
             value={Number(s.ttsRate) || 0.95}
             onChange={(v) => setAndPersist({ ttsRate: v })}
             disabled={!s.ttsEnabled}
-          />
-        </FormItem>
-      </Group>
-
-      <Group header={<Header mode="secondary">Практика</Header>}>
-        <FormItem top="Стиль собеседника">
-          <Select
-            value={s.practiceTone || 'neutral'}
-            options={toneOptions}
-            onChange={(e) => setAndPersist({ practiceTone: e.target.value })}
           />
         </FormItem>
       </Group>

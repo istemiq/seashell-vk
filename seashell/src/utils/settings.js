@@ -4,7 +4,6 @@ export const DEFAULT_SETTINGS = {
   onboarded: false,
   ttsEnabled: true,
   ttsRate: 0.95,
-  practiceTone: 'neutral', // neutral | friendly | strict
 };
 
 function safeParse(json) {

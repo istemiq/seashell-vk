@@ -1,13 +1,14 @@
 import { Panel, PanelHeader, PanelHeaderBack, Group, Header, Text } from '@vkontakte/vkui';
-import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import PropTypes from 'prop-types';
 
+import { useNavigateBackOrHome } from '../utils/useNavigateBackOrHome.js';
+
 export const Readme = ({ id }) => {
-  const routeNavigator = useRouteNavigator();
+  const goBackOrHome = useNavigateBackOrHome();
 
   return (
     <Panel id={id}>
-      <PanelHeader before={<PanelHeaderBack onClick={() => routeNavigator.back()} />}>Справка</PanelHeader>
+      <PanelHeader before={<PanelHeaderBack onClick={() => void goBackOrHome()} />}>Справка</PanelHeader>
 
       <Group header={<Header mode="secondary">Что здесь есть</Header>}>
         <Text style={{ lineHeight: 1.55 }}>

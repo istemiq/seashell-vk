@@ -31,18 +31,27 @@ function headers() {
 }
 
 function messageFromStatusAndBody(status, text) {
+  const raw = String(text ?? '');
+  const trimmed = raw.trim();
+  if (/^<\?xml/i.test(trimmed) && /<Code>\s*AccessDenied\s*<\/Code>/i.test(trimmed)) {
+    return [
+      'Не удалось обратиться к API: запрос попал в VK Hosting (AccessDenied).',
+      'Фронт собран без VITE_API_URL, поэтому /api идёт не на ваш сервер.',
+      'Пересоберите фронт с VITE_API_URL=https://ВАШ-API-ХОСТ (или .../api) и задеплойте снова.',
+    ].join(' ');
+  }
   try {
     const j = JSON.parse(text);
     if (j?.error && typeof j.error === 'string') return j.error;
   } catch {
     // не JSON
   }
-  return text || `HTTP ${status}`;
+  return trimmed || `HTTP ${status}`;
 }
 
 /**
  * Один шаг диалога: эхо, правки, ответ собеседника.
- * @param {{ userText: string, history: Array<{ role: string, text: string }>, tone?: string }} body
+ * @param {{ userText: string, history: Array<{ role: string, text: string }> }} body
  */
 export async function postPracticeTurn(body) {
   const r = await fetch(apiUrl('/practice/turn'), {

@@ -73,6 +73,14 @@ const RESTART_API_HINT =
 function messageFromStatusAndBody(status, text) {
   const raw = String(text ?? '');
   const trimmed = raw.trim();
+  // VK Hosting (S3) иногда отвечает XML AccessDenied, если фронт случайно стучится на /api по origin.
+  if (/^<\?xml/i.test(trimmed) && /<Code>\s*AccessDenied\s*<\/Code>/i.test(trimmed)) {
+    return [
+      'Не удалось обратиться к API: запрос попал в VK Hosting (AccessDenied).',
+      'Это значит, что фронт собран без VITE_API_URL и ходит на /api по текущему домену.',
+      'Нужно пересобрать и задеплоить фронт с VITE_API_URL=https://ВАШ-API-ХОСТ (или .../api).',
+    ].join(' ');
+  }
   if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
     if (status === 404 && /Cannot POST/i.test(trimmed)) {
       return `Маршрут не найден (404). ${RESTART_API_HINT}`;

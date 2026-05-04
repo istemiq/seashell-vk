@@ -1,14 +1,15 @@
 import { Panel, PanelHeader, PanelHeaderBack, Placeholder } from '@vkontakte/vkui';
-import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import PropTypes from 'prop-types';
 import PersikImage from '../assets/persik.png';
 
+import { useNavigateBackOrHome } from '../utils/useNavigateBackOrHome.js';
+
 export const Persik = ({ id }) => {
-  const routeNavigator = useRouteNavigator();
+  const goBackOrHome = useNavigateBackOrHome();
 
   return (
     <Panel id={id}>
-      <PanelHeader before={<PanelHeaderBack onClick={() => routeNavigator.back()} />}>Persik</PanelHeader>
+      <PanelHeader before={<PanelHeaderBack onClick={() => void goBackOrHome()} />}>Persik</PanelHeader>
       <Placeholder>
         <img width={230} src={PersikImage} alt="Persik The Cat" />
       </Placeholder>

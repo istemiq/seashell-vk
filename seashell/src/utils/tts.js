@@ -56,7 +56,21 @@ async function tryWebSpeech(text) {
     const voice = pickEnglishVoice();
     if (voice) u.voice = voice;
     window.speechSynthesis.speak(u);
-    return true;
+    const startedSpeech = typeof window.speechSynthesis.speaking === 'boolean'
+      ? window.speechSynthesis.speaking ||
+        window.speechSynthesis.pending ||
+        window.speechSynthesis.paused
+      : true;
+    if (!startedSpeech) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    const stateOk =
+      typeof window.speechSynthesis.speaking === 'boolean'
+        ? window.speechSynthesis.speaking ||
+          window.speechSynthesis.pending ||
+          window.speechSynthesis.paused
+        : true;
+    return Boolean(stateOk);
   } catch {
     return false;
   }
@@ -73,7 +87,9 @@ export async function speakEnglish(text) {
   const started = await tryWebSpeech(t);
   if (!started) {
     throw new Error(
-      'Озвучка недоступна в этом браузере/вью (часто VK WebView). Попробуй открыть в браузере или включить системный TTS на телефоне.',
+      // Внутри VK WebView Web Speech часто просто выключен, независимо от «системного TTS» на телефоне.
+      // Пользовательский следующий шаг — открыть тот же мини‑апп во внешнем браузере.
+      'Озвучка недоступна во встроенном вью VK. Нажми «Открыть в браузере» (или скопируй ссылку) — там Web Speech обычно работает.',
     );
   }
 }

@@ -268,11 +268,10 @@ function buildPracticePrompt(userText, historyLines) {
       : historyLines
           .map((m) => `${m.role}: ${m.text}`)
           .join('\n')
-          .slice(0, 4000);
+          .slice(0, 16000);
   return loadPracticeTurnTemplate()
     .replace('{{USER_TEXT}}', String(userText).trim().slice(0, 4000))
-    .replace('{{HISTORY}}', h)
-    .replace('{{TONE_HINT}}', '');
+    .replace('{{HISTORY}}', h);
 }
 
 function extractJsonObject(text) {
@@ -307,26 +306,19 @@ function normalizePracticeTurn(obj) {
 }
 
 /** Один ход диалога: эхо реплики, правки, ответ собеседника. */
-function toneHint(tone) {
-  const t = String(tone || '').toLowerCase().trim();
-  if (t === 'friendly') return 'Friendly: be warm and supportive, keep it short (1–2 sentences).';
-  if (t === 'strict') return 'Strict: be concise and pragmatic. Avoid small talk. Still polite.';
-  return 'Neutral: natural, calm, and short (1–2 sentences).';
-}
-
-export async function generatePracticeTurn({ userText, history, tone }) {
+export async function generatePracticeTurn({ userText, history }) {
   const model = process.env.GIGACHAT_MODEL_NAME || 'GigaChat';
   const token = await getAccessToken();
   const historyLines = Array.isArray(history)
     ? history
         .filter((m) => m && typeof m.text === 'string')
-        .slice(-8)
+        .slice(-28)
         .map((m) => ({
           role: m.role === 'assistant' ? 'Assistant' : 'User',
-          text: m.text.slice(0, 800),
+          text: m.text.slice(0, 1200),
         }))
     : [];
-  const userContent = buildPracticePrompt(userText, historyLines).replace('{{TONE_HINT}}', toneHint(tone));
+  const userContent = buildPracticePrompt(userText, historyLines);
 
   let res;
   try {
@@ -343,11 +335,14 @@ export async function generatePracticeTurn({ userText, history, tone }) {
           {
             role: 'system',
             content:
-              'You output only valid JSON when asked. No markdown fences. Follow the user format exactly.',
+              'You output only valid JSON when asked. No markdown fences. Keys: echo, corrections, reply. The "reply" must read like a sharp, natural native speaker in chat — specific, coherent with prior turns, not generic and not therapeutic.',
           },
           { role: 'user', content: userContent },
         ],
-        temperature: 0.65,
+        temperature: 0.52,
+        top_p: 0.92,
+        max_tokens: 700,
+        repetition_penalty: 1.06,
       }),
     });
   } catch (e) {
