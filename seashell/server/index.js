@@ -27,6 +27,13 @@ import { generateWordExamples, generatePracticeTurn, tlsInsecure } from './gigac
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
 
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  next();
+});
+
 // --- Общие middleware: CORS (фронт на другом порту), JSON-тело запросов ---
 function allowedOrigins() {
   const raw = String(process.env.CORS_ORIGINS ?? '').trim();
@@ -336,6 +343,13 @@ app.delete('/api/words/:id', async (req, res) => {
 
 async function start() {
   await initDb();
+  if (
+    String(process.env.NODE_ENV ?? '').toLowerCase() === 'production' &&
+    !String(process.env.VK_APP_SECRET ?? '').trim()
+  ) {
+    console.warn('[seashell] VK_APP_SECRET пуст при NODE_ENV=production — клиент можно подделать только по X-VK-User-Id.');
+  }
+
   app.listen(PORT, '0.0.0.0', () => {
     const tls = process.env.GIGACHAT_TLS_INSECURE?.trim();
     const model = String(process.env.GIGACHAT_MODEL_NAME || '').trim() || 'GigaChat';
