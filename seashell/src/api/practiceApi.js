@@ -3,6 +3,7 @@
  * Использует тот же `resolveVkUserId`, что и словарь (общий fallback пользователя).
  */
 import { resolveVkUserId } from './dictionaryApi.js';
+import { getVkLaunchParamsFromLocation } from '../utils/vkUserId.js';
 
 const RAW_BASE = (import.meta.env.VITE_API_URL || '').trim();
 
@@ -24,9 +25,11 @@ function headers() {
   if (vkUserId == null) {
     throw new Error('Не удалось определить пользователя');
   }
+  const lp = getVkLaunchParamsFromLocation();
   return {
     'Content-Type': 'application/json',
     'X-VK-User-Id': String(vkUserId),
+    ...(lp ? { 'X-VK-Launch-Params': lp } : null),
   };
 }
 

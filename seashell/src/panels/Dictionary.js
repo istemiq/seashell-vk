@@ -2,7 +2,7 @@
  * Панель «Словарь»: список слов, добавление с генерацией примеров через GigaChat, карусель примеров с переводом.
  * См. `dictionaryApi.js` и `server/db.js` (PostgreSQL).
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import bridge from '@vkontakte/vk-bridge';
 import {
   Panel,
@@ -21,13 +21,16 @@ import {
   Separator,
   Checkbox,
   Link,
+  ModalRoot,
+  ModalPage,
+  ModalPageHeader,
+  ModalDismissButton,
 } from '@vkontakte/vkui';
 import PropTypes from 'prop-types';
 
 import * as api from '../api/dictionaryApi.js';
 import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
 import { withTimeout } from '../utils/withTimeout.js';
-import { loadSettings } from '../utils/settings.js';
 import { speakEnglish } from '../utils/tts.js';
 import { copyUrlToClipboard, openInBrowser } from '../utils/openInBrowser.js';
 import { useNavigateBackOrHome } from '../utils/useNavigateBackOrHome.js';
@@ -59,8 +62,13 @@ function lineFromExampleField(val) {
   return '';
 }
 
+/** Слой в history для «назад» с карточки слова в список, без ухода с раздела */
+const HISTORY_WORD_DETAIL = { seashellDictWord: 1 };
+const WORD_SETS_MODAL_ID = 'word-sets-picker';
+
 export const Dictionary = ({ id }) => {
   const goBackOrHome = useNavigateBackOrHome();
+  const wordDetailHistoryRef = useRef(false);
   const [vkUserId, setVkUserId] = useState(() => getVkUserIdFromLocation());
   const [words, setWords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -83,12 +91,29 @@ export const Dictionary = ({ id }) => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [exampleIdx, setExampleIdx] = useState(0);
-  const [editingWordSets, setEditingWordSets] = useState(false);
+  const [wordSetsModalOpen, setWordSetsModalOpen] = useState(false);
+  const [modalNewSetName, setModalNewSetName] = useState('');
+  const [creatingSetInModal, setCreatingSetInModal] = useState(false);
   const [pendingSetIds, setPendingSetIds] = useState([]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     setAppHref(window.location.href);
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (!wordDetailHistoryRef.current) return;
+      wordDetailHistoryRef.current = false;
+      setSelectedId(null);
+      setDetail(null);
+      setExampleIdx(0);
+      setWordSetsModalOpen(false);
+      setModalNewSetName('');
+      setPendingSetIds([]);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
   // Fallback vk_user_id для API вне VK WebView.
@@ -165,13 +190,18 @@ export const Dictionary = ({ id }) => {
     setSelectedId(wordId);
     setDetailLoading(true);
     setExampleIdx(0);
-    setEditingWordSets(false);
+    setWordSetsModalOpen(false);
+    setModalNewSetName('');
     setError(null);
     setTtsOpenOffer(false);
     try {
       const d = await api.fetchWord(wordId);
       setDetail(d);
       setPendingSetIds(Array.isArray(d?.setIds) ? d.setIds : []);
+      if (typeof window !== 'undefined') {
+        window.history.pushState(HISTORY_WORD_DETAIL, '', window.location.href);
+        wordDetailHistoryRef.current = true;
+      }
     } catch (e) {
       setError(e.message || 'Ошибка');
       setTtsOpenOffer(false);
@@ -182,11 +212,17 @@ export const Dictionary = ({ id }) => {
   };
 
   const closeWord = () => {
+    const hadHistoryLayer = wordDetailHistoryRef.current;
+    wordDetailHistoryRef.current = false;
     setSelectedId(null);
     setDetail(null);
     setExampleIdx(0);
-    setEditingWordSets(false);
+    setWordSetsModalOpen(false);
+    setModalNewSetName('');
     setPendingSetIds([]);
+    if (hadHistoryLayer && typeof window !== 'undefined') {
+      window.history.back();
+    }
   };
 
   const addWord = async () => {
@@ -255,7 +291,7 @@ export const Dictionary = ({ id }) => {
   const currentExampleText = lineFromExampleField(ex?.text);
   const currentExampleRu = lineFromExampleField(ex?.translation);
 
-  const headerTitle = selectedId ? (detail?.word || '…') : 'Словарь';
+  const headerTitle = selectedId != null ? (detail?.word || '…') : 'Словарь';
   const activeSetName =
     screen === 'group' && Number.isFinite(activeSetId)
       ? sets.find((s) => Number(s.id) === Number(activeSetId))?.name ?? 'Группа'
@@ -341,15 +377,52 @@ export const Dictionary = ({ id }) => {
     );
   };
 
+  const closeWordSetsModalDiscard = useCallback(() => {
+    setWordSetsModalOpen(false);
+    setModalNewSetName('');
+    setCreatingSetInModal(false);
+    setPendingSetIds(Array.isArray(detail?.setIds) ? [...detail.setIds] : []);
+  }, [detail?.setIds]);
+
+  const openWordSetsPicker = useCallback(() => {
+    setModalNewSetName('');
+    setPendingSetIds(Array.isArray(detail?.setIds) ? [...detail.setIds] : []);
+    void loadSets();
+    setWordSetsModalOpen(true);
+  }, [detail?.setIds, loadSets]);
+
+  const createSetFromModal = async () => {
+    const name = modalNewSetName.trim().replace(/\s+/g, ' ');
+    if (!name || !vkUserId) return;
+    setCreatingSetInModal(true);
+    setError(null);
+    setTtsOpenOffer(false);
+    try {
+      const created = await api.createSet(name);
+      setModalNewSetName('');
+      await loadSets();
+      const newId = created?.id != null ? Number(created.id) : NaN;
+      if (Number.isFinite(newId) && newId > 0) {
+        setPendingSetIds((prev) => (prev.some((x) => Number(x) === newId) ? prev : [...prev, newId]));
+      }
+    } catch (e) {
+      setError(e.message || 'Не удалось создать группу');
+      setTtsOpenOffer(false);
+    } finally {
+      setCreatingSetInModal(false);
+    }
+  };
+
   const saveWordSets = async () => {
-    if (!selectedId || !vkUserId) return;
+    if (selectedId == null || !vkUserId) return;
     setError(null);
     setTtsOpenOffer(false);
     try {
       const r = await api.updateWordSets(selectedId, pendingSetIds);
       const out = Array.isArray(r?.setIds) ? r.setIds : pendingSetIds;
       setDetail((prev) => (prev ? { ...prev, setIds: out } : prev));
-      setEditingWordSets(false);
+      setWordSetsModalOpen(false);
+      setModalNewSetName('');
       await loadList();
     } catch (e) {
       setError(e.message || 'Не удалось сохранить группы');
@@ -358,7 +431,14 @@ export const Dictionary = ({ id }) => {
   };
 
   const onBack = () => {
-    if (selectedId) return closeWord();
+    if (selectedId != null) {
+      if (wordDetailHistoryRef.current) {
+        window.history.back();
+      } else {
+        closeWord();
+      }
+      return;
+    }
     if (screen === 'group') {
       setScreen('groups');
       return;
@@ -372,8 +452,104 @@ export const Dictionary = ({ id }) => {
 
   return (
     <Panel id={id}>
+      <ModalRoot
+        activeModal={wordSetsModalOpen ? WORD_SETS_MODAL_ID : null}
+        onClose={closeWordSetsModalDiscard}
+      >
+        <ModalPage
+          id={WORD_SETS_MODAL_ID}
+          settlingHeight={90}
+          hideCloseButton
+          onClose={closeWordSetsModalDiscard}
+          header={
+            <ModalPageHeader before={<ModalDismissButton onClick={closeWordSetsModalDiscard} />}>
+              Добавить в группу
+            </ModalPageHeader>
+          }
+        >
+          <div className="seashell-crt seashell-crt--modal">
+            <Box
+              style={{
+                padding: '12px 16px calc(20px + env(safe-area-inset-bottom, 0px))',
+                boxSizing: 'border-box',
+              }}
+            >
+              {setsLoading ? (
+                <Box style={{ display: 'flex', justifyContent: 'center', padding: 16 }}>
+                  <Spinner />
+                </Box>
+              ) : null}
+
+              {!setsLoading && sets.length === 0 ? (
+                <Footnote>Пока нет групп — создай первую ниже или в разделе «Мои группы».</Footnote>
+              ) : null}
+
+              {!setsLoading && sets.length > 0 ? (
+                <Box style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {sets.map((s) => (
+                    <Checkbox
+                      key={s.id}
+                      checked={pendingSetIds.some((x) => Number(x) === Number(s.id))}
+                      onChange={() => togglePendingSet(s.id)}
+                    >
+                      {s.name}
+                    </Checkbox>
+                  ))}
+                </Box>
+              ) : null}
+
+              <Separator style={{ margin: '18px 0' }} />
+
+              <FormItem top="Новая группа">
+                <Input
+                  value={modalNewSetName}
+                  onChange={(e) => setModalNewSetName(e.target.value)}
+                  placeholder="например: Кухня"
+                  disabled={creatingSetInModal}
+                />
+              </FormItem>
+              <FormItem>
+                <Button
+                  type="button"
+                  size="l"
+                  stretched
+                  loading={creatingSetInModal}
+                  disabled={!modalNewSetName.trim() || creatingSetInModal}
+                  onClick={() => void createSetFromModal()}
+                >
+                  Создать и выбрать
+                </Button>
+              </FormItem>
+
+              <FormItem>
+                <Button
+                  type="button"
+                  size="l"
+                  stretched
+                  disabled={refreshing || setsLoading}
+                  onClick={() => void saveWordSets()}
+                >
+                  Сохранить
+                </Button>
+                <Button
+                  type="button"
+                  size="l"
+                  stretched
+                  mode="secondary"
+                  style={{ marginTop: 8 }}
+                  disabled={creatingSetInModal}
+                  onClick={closeWordSetsModalDiscard}
+                >
+                  Отмена
+                </Button>
+              </FormItem>
+            </Box>
+          </div>
+        </ModalPage>
+      </ModalRoot>
+
       <PanelHeader before={<PanelHeaderBack onClick={onBack} />}>
-        {selectedId ? headerTitle : screen === 'group' ? activeSetName : 'Словарь'}
+        {selectedId != null ? headerTitle : screen === 'group' ? activeSetName : 'Словарь'}
       </PanelHeader>
 
       {!vkUserId && !error && (
@@ -440,7 +616,7 @@ export const Dictionary = ({ id }) => {
       )}
 
       {/* Список слов и форма добавления */}
-      {!selectedId && vkUserId && (
+      {selectedId == null && vkUserId && (
         <>
           {screen === 'dictionary' && (
             <Group header={<Header mode="secondary">Группы</Header>}>
@@ -449,6 +625,7 @@ export const Dictionary = ({ id }) => {
                   type="button"
                   size="l"
                   stretched
+                  mode="secondary"
                   disabled={setsLoading}
                   onClick={() => setScreen('groups')}
                 >
@@ -503,7 +680,7 @@ export const Dictionary = ({ id }) => {
                     onClick={() => {
                       setActiveSetId(Number(s.id));
                       setScreen('group');
-                      setEditingWordSets(false);
+                      setWordSetsModalOpen(false);
                     }}
                     subtitle="Открыть группу"
                     after={
@@ -593,7 +770,7 @@ export const Dictionary = ({ id }) => {
       )}
 
       {/* Карточка слова: значение, примеры, озвучка */}
-      {selectedId && (
+      {selectedId != null && (
         <Group>
           {detailLoading && (
             <Box style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
@@ -610,49 +787,24 @@ export const Dictionary = ({ id }) => {
                   <Footnote style={{ marginTop: 6 }}>Пока без групп.</Footnote>
                 )}
 
-                <Box style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <Footnote style={{ marginTop: 8 }}>
+                  Нажми «Добавить в группу», чтобы отметить существующие группы или создать новую.
+                </Footnote>
+                <Box style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
                   <Button
                     type="button"
                     mode="secondary"
-                    size="m"
-                    disabled={setsLoading}
-                    onClick={() => setEditingWordSets((v) => !v)}
+                    size="l"
+                    stretched
+                    disabled={setsLoading || detailLoading}
+                    onClick={openWordSetsPicker}
                   >
-                    {editingWordSets ? 'Скрыть' : 'Изменить группы'}
+                    Добавить в группу
                   </Button>
-                  <Button type="button" mode="tertiary" size="m" disabled={setsLoading} onClick={loadSets}>
+                  <Button type="button" mode="tertiary" size="m" disabled={setsLoading} onClick={() => void loadSets()}>
                     Обновить список групп
                   </Button>
                 </Box>
-
-                {editingWordSets && (
-                  <Box style={{ marginTop: 12 }}>
-                    {sets.length === 0 ? (
-                      <Footnote>Сначала создай хотя бы одну группу (в списке слов, кнопка «Управлять группами»).</Footnote>
-                    ) : (
-                      <>
-                        {sets.map((s) => (
-                          <Checkbox
-                            key={s.id}
-                            checked={pendingSetIds.some((x) => Number(x) === Number(s.id))}
-                            onChange={() => togglePendingSet(s.id)}
-                          >
-                            {s.name}
-                          </Checkbox>
-                        ))}
-                        <Button
-                          size="l"
-                          stretched
-                          style={{ marginTop: 12 }}
-                          disabled={refreshing}
-                          onClick={saveWordSets}
-                        >
-                          Сохранить группы
-                        </Button>
-                      </>
-                    )}
-                  </Box>
-                )}
                 <Separator style={{ margin: '12px 0' }} />
               </Box>
 
@@ -662,7 +814,8 @@ export const Dictionary = ({ id }) => {
                   <Text style={{ marginTop: 6, lineHeight: 1.45 }}>{detail.gloss_ru}</Text>
                 ) : (
                   <Footnote style={{ marginTop: 6 }}>
-                    Краткого перевода пока нет — нажми «Обновить примеры» ниже.
+                    Похоже, это не слово или редкий неологизм — значение не показываю. Нажми «Обновить примеры», если
+                    хочешь ещё попытку.
                   </Footnote>
                 )}
                 <Separator style={{ margin: '12px 0' }} />

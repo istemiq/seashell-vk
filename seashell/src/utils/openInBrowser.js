@@ -100,77 +100,40 @@ function buildOpenCandidates(url) {
   return out;
 }
 
-/**
- * Пытается открыть текущий экран во внешнем браузере.
- * В разных клиентах VK поддержка bridge-событий может отличаться,
- * поэтому делаем best-effort: bridge → window.open → копирование ссылки → навигация в этой вкладке.
- *
- * Возвращает { ok: boolean, method?: string, error?: string }
- */
-export async function openInBrowser(url = null) {
-  let u = String(url || (typeof window !== 'undefined' ? window.location.href : '')).trim();
-  if (!u) return { ok: false, error: 'Пустая ссылка' };
-
+function normalizeUrlForMiniAppWebView(u) {
+  let out = String(u || '').trim();
+  if (!out) return out;
   try {
-    // На части клиентов bridge-методы стабильнее после init.
-    await withTimeout(bridge.send('VKWebAppInit'), BRIDGE_OPEN_MS);
+    if (!bridge.isIframe() && !bridge.isWebView()) return out;
+    if (typeof URL === 'function') {
+      const parsed = new URL(out);
+      const host = String(parsed.hostname || '').toLowerCase();
+      const isLocal =
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host.endsWith('.local') ||
+        /^192\.168\./.test(host) ||
+        /^10\./.test(host) ||
+        /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+      if (!isLocal && parsed.protocol === 'http:') {
+        parsed.protocol = 'https:';
+        out = parsed.toString();
+      }
+    } else if (out.startsWith('http://') && !/^http:\/\/(localhost|127\.0\.0\.1)\b/i.test(out)) {
+      out = `https://${out.slice('http://'.length)}`;
+    }
   } catch {
     // ignore
   }
+  return out;
+}
 
-  try {
-    if (bridge.isIframe() || bridge.isWebView()) {
-      if (typeof URL === 'function') {
-        const parsed = new URL(u);
-        const host = String(parsed.hostname || '').toLowerCase();
-        const isLocal =
-          host === 'localhost' ||
-          host === '127.0.0.1' ||
-          host.endsWith('.local') ||
-          /^192\.168\./.test(host) ||
-          /^10\./.test(host) ||
-          /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
-        if (!isLocal && parsed.protocol === 'http:') {
-          parsed.protocol = 'https:';
-          u = parsed.toString();
-        }
-      } else if (u.startsWith('http://') && !/^http:\/\/(localhost|127\.0\.0\.1)\b/i.test(u)) {
-        u = `https://${u.slice('http://'.length)}`;
-      }
-    }
-  } catch {
-    // ignore — откроем как есть
-  }
-
-  const candidates = buildOpenCandidates(u);
-
-  // Важно: VKWebAppOpenLink иногда "успешно" завершается, но визуально ничего не открывает.
-  // Поэтому НЕ делаем ранний return — продолжаем цепочку.
-  for (const cand of candidates) {
-    try {
-      await withTimeout(bridge.send('VKWebAppOpenLink', { url: cand }), BRIDGE_OPEN_MS);
-    } catch {
-      // ignore
-    }
-  }
-
-  // Fallback: некоторые версии клиентов/обвязки всё ещё отвечают на это событие
-  for (const cand of candidates) {
-    try {
-      await withTimeout(bridge.send('VKWebAppOpenURL', { url: cand }), BRIDGE_OPEN_MS);
-    } catch {
-      // ignore
-    }
-  }
-
-  // Часто самый надёжный способ в WebView: «как обычная ссылка» в рамках user gesture.
+function trySyncOpenInNewWindow(candidates) {
   for (const cand of candidates) {
     if (openViaAnchorClick(cand)) {
       return { ok: true, method: 'anchor' };
     }
   }
-
-  // Обычный веб-fallback.
   for (const cand of candidates) {
     try {
       const w = window.open(cand, '_blank', 'noopener,noreferrer');
@@ -179,6 +142,52 @@ export async function openInBrowser(url = null) {
       // ignore
     }
   }
+  return null;
+}
+
+/**
+ * Пытается открыть текущий экран во внешнем браузере.
+ * В разных клиентах VK поддержка bridge-событий может отличаться,
+ * поэтому делаем best-effort: сначала синхронный anchor/window.open (пока жив user gesture),
+ * затем bridge, затем копирование / навигация.
+ *
+ * Возвращает { ok: boolean, method?: string, error?: string }
+ */
+export async function openInBrowser(url = null) {
+  let u = String(url || (typeof window !== 'undefined' ? window.location.href : '')).trim();
+  if (!u) return { ok: false, error: 'Пустая ссылка' };
+
+  u = normalizeUrlForMiniAppWebView(u);
+  const candidates = buildOpenCandidates(u);
+
+  const syncHit = trySyncOpenInNewWindow(candidates);
+  if (syncHit) return syncHit;
+
+  try {
+    await withTimeout(bridge.send('VKWebAppInit'), BRIDGE_OPEN_MS);
+  } catch {
+    // ignore
+  }
+
+  // Важно: VKWebAppOpenLink иногда "успешно" завершается, но визуально ничего не открывает.
+  for (const cand of candidates) {
+    try {
+      await withTimeout(bridge.send('VKWebAppOpenLink', { url: cand }), BRIDGE_OPEN_MS);
+    } catch {
+      // ignore
+    }
+  }
+
+  for (const cand of candidates) {
+    try {
+      await withTimeout(bridge.send('VKWebAppOpenURL', { url: cand }), BRIDGE_OPEN_MS);
+    } catch {
+      // ignore
+    }
+  }
+
+  const afterBridge = trySyncOpenInNewWindow(candidates);
+  if (afterBridge) return afterBridge;
 
   const copiedOk = await writeClipboardSafe(u);
   if (copiedOk) return { ok: true, method: 'clipboard', error: undefined };

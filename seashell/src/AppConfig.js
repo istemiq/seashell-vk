@@ -1,6 +1,6 @@
 /**
- * Обёртка приложения: ConfigProvider (тёмная тема VKUI), CRT-стили (`styles/crt-theme.css`),
- * safe area, роутер. Класс `seashell-crt` на AppRoot задаёт ретро-терминальный вид (янтарная палитра).
+ * Обёртка приложения: ConfigProvider (тёмная тема VKUI), стили терминала (`styles/crt-theme.css`),
+ * safe area, роутер. Класс `seashell-crt` на AppRoot задаёт тёмную «консольную» палитру.
  */
 import vkBridge, { parseURLSearchParamsForGetLaunchParams } from '@vkontakte/vk-bridge';
 import { useAdaptivity, useInsets } from '@vkontakte/vk-bridge-react';

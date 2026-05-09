@@ -272,8 +272,7 @@ export const Practice = ({ id }) => {
                 size="m"
                 mode="secondary"
                 onClick={() => {
-                  void (async () => {
-                    const r = await openInBrowser();
+                  void openInBrowser().then((r) => {
                     if (!r?.ok) {
                       const err = r?.error || 'Не удалось открыть';
                       setNotice(err);
@@ -293,7 +292,7 @@ export const Practice = ({ id }) => {
                         {hint}
                       </Snackbar>,
                     );
-                  })();
+                  });
                 }}
               >
                 Открыть в браузере

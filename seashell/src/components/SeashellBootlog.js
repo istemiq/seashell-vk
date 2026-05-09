@@ -20,6 +20,7 @@ function prefersReducedMotion() {
 
 /**
  * Декоративные строки в стиле старых ПК; первая строка подставляет имя из VK, если уже известно.
+ * Прыжок вёрстки при наборе снимает CSS (min-height у .seashell-bootlog), анимацию не отключаем на мобильных.
  */
 export function SeashellBootlog({ userDisplayName }) {
   const trimmed = typeof userDisplayName === 'string' ? userDisplayName.trim() : '';
@@ -85,7 +86,7 @@ export function SeashellBootlog({ userDisplayName }) {
 
         const showCursor = !reduced && i === step.line && step.ch < full.length;
         return (
-          <div key={`${i}-${step.cycle}`}>
+          <div className="seashell-bootlog__row" key={`${i}-${step.cycle}`}>
             <strong>{prefix}</strong> {visible}
             {showCursor ? '▌' : ''}
           </div>

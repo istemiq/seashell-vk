@@ -31,13 +31,17 @@ export function tlsInsecure() {
   return process.env.NODE_ENV !== 'production';
 }
 function gigaFetch(url, init = {}) {
+  const timeouts = {
+    headersTimeout: 20_000,
+    bodyTimeout: 25_000,
+  };
   if (tlsInsecure()) {
     if (!insecureDispatcher) {
       insecureDispatcher = new Agent({ connect: { rejectUnauthorized: false } });
     }
-    return undiciFetch(url, { ...init, dispatcher: insecureDispatcher });
+    return undiciFetch(url, { ...timeouts, ...init, dispatcher: insecureDispatcher });
   }
-  return undiciFetch(url, init);
+  return undiciFetch(url, { ...timeouts, ...init });
 }
 
 let cached = { token: null, expiresAt: 0 };
@@ -203,6 +207,16 @@ function normalizeExamples(arr) {
   return out;
 }
 
+function sanitizeGlossRu(glossRuRaw) {
+  const g = String(glossRuRaw ?? '').trim();
+  if (!g) return null;
+  // Если модель сама пишет, что слово выдуманное/не слово — не показываем "значение".
+  if (/(вымыш|придуман|не\s*слово|не\s*существ|имя\s*собствен|без\s*конкретн)/i.test(g)) {
+    return null;
+  }
+  return g;
+}
+
 export async function generateWordExamples(word) {
   const model = process.env.GIGACHAT_MODEL_NAME || 'GigaChat';
   const token = await getAccessToken();
@@ -250,7 +264,7 @@ export async function generateWordExamples(word) {
     throw new Error(`Expected 15 examples, got ${examples.length}`);
   }
 
-  const g = (glossRu ?? '').trim();
+  const g = sanitizeGlossRu(glossRu);
   return {
     glossRu: g || null,
     examples: examples.slice(0, 15),

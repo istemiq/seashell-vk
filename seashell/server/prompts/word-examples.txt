@@ -1,6 +1,7 @@
 You help English learners who speak Russian. For the English word or phrase "{{WORD}}":
 
 1) Give a short Russian gloss: what "{{WORD}}" means for a learner (one line; if several common senses, separate with semicolons). Field name: "glossRu".
+   If "{{WORD}}" looks like a made-up word / typo / not a real English word or phrase, set "glossRu" to an empty string "" (do NOT invent a meaning).
 
 2) Write exactly 15 short, simple, conversational example sentences (everyday spoken English). Each sentence must naturally use "{{WORD}}" (correct form: base word, inflection, or common phrase). Keep each example to one short sentence or two very short clauses. Mix statements and questions. Vocabulary and grammar should be easy (A2–B1).
 

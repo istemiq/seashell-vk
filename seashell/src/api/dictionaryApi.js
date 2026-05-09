@@ -3,7 +3,7 @@
  * Все запросы с заголовком X-VK-User-Id (из URL или fallback после VKWebAppGetUserInfo).
  * База URL: в проде задаётся VITE_API_URL; в dev — относительный `/api` + прокси Vite.
  */
-import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
+import { getVkLaunchParamsFromLocation, getVkUserIdFromLocation } from '../utils/vkUserId.js';
 
 /**
  * Прод: VITE_API_URL=https://ИМЯ.beget.app или https://ИМЯ.beget.app/api
@@ -41,9 +41,11 @@ function headers() {
   if (vkUserId == null) {
     throw new Error('Не удалось определить vk_user_id (нет в URL и не задан fallback)');
   }
+  const lp = getVkLaunchParamsFromLocation();
   return {
     'Content-Type': 'application/json',
     'X-VK-User-Id': String(vkUserId),
+    ...(lp ? { 'X-VK-Launch-Params': lp } : null),
   };
 }
 

@@ -18,3 +18,13 @@ export function getVkUserIdFromLocation() {
   const n = id != null ? parseInt(String(id), 10) : NaN;
   return Number.isFinite(n) && n > 0 ? n : null;
 }
+
+/**
+ * Возвращает launch params VK (querystring без '?').
+ * Нужны бэкенду для проверки подписи (vk_sign) и извлечения vk_user_id без доверия к заголовкам.
+ */
+export function getVkLaunchParamsFromLocation() {
+  if (typeof window === 'undefined') return '';
+  const s = String(window.location.search || '').trim();
+  return s.startsWith('?') ? s.slice(1) : s;
+}

@@ -6,6 +6,14 @@ import PropTypes from 'prop-types';
 import { SeashellBootlog } from '../components/SeashellBootlog';
 import { loadSettings, updateSettings } from '../utils/settings.js';
 
+/** Короткие тезисы (EN): естественные формулировки для носителя */
+const HOME_TAGLINES_EN = [
+  'Learn by doing.',
+  'Grow your vocabulary.',
+  'Keep practicing.',
+  'Speak up.',
+];
+
 export const Home = ({ id, fetchedUser }) => {
   const { photo_200, city, first_name, last_name } = { ...fetchedUser };
   const routeNavigator = useRouteNavigator();
@@ -20,6 +28,20 @@ export const Home = ({ id, fetchedUser }) => {
     <Panel id={id}>
       <PanelHeader>Главная</PanelHeader>
       <Group>
+        <div className="seashell-home-tagline" lang="en">
+          {HOME_TAGLINES_EN.map((line, i) => (
+            <span
+              key={line}
+              className={
+                i === 0
+                  ? 'seashell-home-tagline__line seashell-home-tagline__line--lead'
+                  : 'seashell-home-tagline__line'
+              }
+            >
+              {line}
+            </span>
+          ))}
+        </div>
         <SeashellBootlog userDisplayName={userDisplayName} />
       </Group>
 
@@ -33,6 +55,7 @@ export const Home = ({ id, fetchedUser }) => {
           <Button
             size="m"
             stretched
+            mode="secondary"
             style={{ marginTop: 12 }}
             onClick={() => {
               updateSettings({ onboarded: true });

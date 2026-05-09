@@ -6,6 +6,7 @@
 import './load-env.js';
 import express from 'express';
 import cors from 'cors';
+import { verifyVkLaunchParams } from './vkSignature.js';
 import {
   initDb,
   listWords,
@@ -27,14 +28,60 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3001;
 
 // --- Общие middleware: CORS (фронт на другом порту), JSON-тело запросов ---
-app.use(cors({ origin: true }));
+function allowedOrigins() {
+  const raw = String(process.env.CORS_ORIGINS ?? '').trim();
+  if (!raw) return null;
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+const ORIGINS = allowedOrigins();
+const isProd = String(process.env.NODE_ENV ?? '').toLowerCase() === 'production';
+
+app.use(
+  cors({
+    origin(origin, cb) {
+      // non-browser requests (curl, server-to-server)
+      if (!origin) return cb(null, true);
+      // dev default: allow all
+      if (!isProd && !ORIGINS) return cb(null, true);
+      // prod default: allow none unless configured
+      if (isProd && !ORIGINS) return cb(new Error('CORS blocked'), false);
+      return cb(null, ORIGINS.includes(origin));
+    },
+    credentials: false,
+  }),
+);
 app.use(express.json({ limit: '256kb' }));
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true });
 });
 
-function vkUserId(req) {
+function makeRateLimiter({ windowMs, max, keyFn }) {
+  const hits = new Map();
+  return (req, res, next) => {
+    const now = Date.now();
+    const key = String(keyFn(req) ?? '');
+    if (!key) return res.status(400).json({ error: 'Missing rate limit key' });
+    const cur = hits.get(key);
+    if (!cur || cur.resetAt <= now) {
+      hits.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    cur.count += 1;
+    if (cur.count > max) {
+      const retryAfterSec = Math.max(1, Math.ceil((cur.resetAt - now) / 1000));
+      res.setHeader('Retry-After', String(retryAfterSec));
+      return res.status(429).json({ error: 'Too many requests. Please slow down.' });
+    }
+    return next();
+  };
+}
+
+function vkUserIdFromHeader(req) {
   const h = req.headers['x-vk-user-id'];
   const n = h != null ? parseInt(String(h), 10) : NaN;
   if (!Number.isFinite(n) || n <= 0) {
@@ -43,12 +90,36 @@ function vkUserId(req) {
   return n;
 }
 
+function vkLaunchParamsFromHeader(req) {
+  const h = req.headers['x-vk-launch-params'];
+  const s = h != null ? String(h).trim() : '';
+  return s || null;
+}
+
 // Маршруты ниже (всё после этого app.use) требуют заголовок X-VK-User-Id. /api/health объявлен выше — без авторизации.
 app.use((req, res, next) => {
-  const uid = vkUserId(req);
-  if (!uid) {
-    return res.status(401).json({ error: 'Missing or invalid X-VK-User-Id header' });
+  const secret = String(process.env.VK_APP_SECRET ?? '').trim();
+  const lp = vkLaunchParamsFromHeader(req);
+
+  if (secret) {
+    if (!lp) {
+      return res.status(401).json({ error: 'Missing X-VK-Launch-Params header' });
+    }
+    const v = verifyVkLaunchParams(lp, secret);
+    if (!v.ok) {
+      return res.status(401).json({ error: 'Invalid VK launch params signature' });
+    }
+    const uid = v.vkUserId != null ? parseInt(String(v.vkUserId), 10) : NaN;
+    if (!Number.isFinite(uid) || uid <= 0) {
+      return res.status(401).json({ error: 'Missing or invalid vk_user_id in launch params' });
+    }
+    req.vkUserId = uid;
+    return next();
   }
+
+  // Dev fallback (или если secret не настроен): старый заголовок.
+  const uid = vkUserIdFromHeader(req);
+  if (!uid) return res.status(401).json({ error: 'Missing or invalid X-VK-User-Id header' });
   req.vkUserId = uid;
   next();
 });
@@ -60,12 +131,28 @@ function normalizeWord(w) {
 }
 
 // --- Разговорная практика (один ход диалога через GigaChat) ---
-app.post('/api/practice/turn', async (req, res) => {
+const limitPractice = makeRateLimiter({
+  windowMs: 60_000,
+  max: 10,
+  keyFn: (req) => `practice:${req.vkUserId}`,
+});
+
+const limitGeneration = makeRateLimiter({
+  windowMs: 60_000,
+  max: 6,
+  keyFn: (req) => `gen:${req.vkUserId}`,
+});
+
+app.post('/api/practice/turn', limitPractice, async (req, res) => {
   const userText = normalizeWord(req.body?.userText ?? req.body?.text ?? '');
   if (!userText || userText.length > 4000) {
     return res.status(400).json({ error: 'Invalid text' });
   }
-  const history = Array.isArray(req.body?.history) ? req.body.history : [];
+  const historyRaw = Array.isArray(req.body?.history) ? req.body.history : [];
+  const history = historyRaw
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string')
+    .slice(-28)
+    .map((m) => ({ role: m.role, text: m.text.slice(0, 1200) }));
   try {
     const turn = await generatePracticeTurn({ userText, history });
     res.json({
@@ -210,10 +297,10 @@ async function handleRefreshExamples(req, res) {
 }
 
 /** Два URL: короткий — для совместимости; длинный — как в REST. */
-app.post('/api/refresh-examples', handleRefreshExamples);
-app.post('/api/words/:id/refresh-examples', handleRefreshExamples);
+app.post('/api/refresh-examples', limitGeneration, handleRefreshExamples);
+app.post('/api/words/:id/refresh-examples', limitGeneration, handleRefreshExamples);
 
-app.post('/api/words', async (req, res) => {
+app.post('/api/words', limitGeneration, async (req, res) => {
   const word = normalizeWord(req.body?.word);
   if (!word || word.length > 200) {
     return res.status(400).json({ error: 'Invalid word' });
