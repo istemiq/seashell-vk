@@ -2,7 +2,8 @@
  * Панель «Словарь»: список слов, добавление с генерацией примеров через GigaChat, карусель примеров с переводом.
  * См. `dictionaryApi.js` и `server/db.js` (PostgreSQL).
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import bridge from '@vkontakte/vk-bridge';
 import {
   Panel,
@@ -21,9 +22,6 @@ import {
   Separator,
   Checkbox,
   Link,
-  ModalRoot,
-  ModalPage,
-  ModalPageHeader,
   ModalDismissButton,
 } from '@vkontakte/vkui';
 import PropTypes from 'prop-types';
@@ -34,6 +32,7 @@ import { withTimeout } from '../utils/withTimeout.js';
 import { speakEnglish } from '../utils/tts.js';
 import { copyUrlToClipboard, openInBrowser } from '../utils/openInBrowser.js';
 import { useNavigateBackOrHome } from '../utils/useNavigateBackOrHome.js';
+import { SplitModalSlotContext } from '../context/SplitModalSlotContext.js';
 
 const BRIDGE_GET_USER_MS = 8000;
 const DEV_FALLBACK_VK_USER_ID = Number(import.meta.env.VITE_DEV_VK_USER_ID) || 1000001;
@@ -64,9 +63,9 @@ function lineFromExampleField(val) {
 
 /** Слой в history для «назад» с карточки слова в список, без ухода с раздела */
 const HISTORY_WORD_DETAIL = { seashellDictWord: 1 };
-const WORD_SETS_MODAL_ID = 'word-sets-picker';
 
 export const Dictionary = ({ id }) => {
+  const splitModalMount = useContext(SplitModalSlotContext);
   const goBackOrHome = useNavigateBackOrHome();
   const wordDetailHistoryRef = useRef(false);
   const [vkUserId, setVkUserId] = useState(() => getVkUserIdFromLocation());
@@ -391,6 +390,20 @@ export const Dictionary = ({ id }) => {
     setWordSetsModalOpen(true);
   }, [detail?.setIds, loadSets]);
 
+  useEffect(() => {
+    if (!wordSetsModalOpen) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') closeWordSetsModalDiscard();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [wordSetsModalOpen, closeWordSetsModalDiscard]);
+
   const createSetFromModal = async () => {
     const name = modalNewSetName.trim().replace(/\s+/g, ' ');
     if (!name || !vkUserId) return;
@@ -450,103 +463,119 @@ export const Dictionary = ({ id }) => {
     void goBackOrHome();
   };
 
+  const wordSetsModal =
+    splitModalMount != null && wordSetsModalOpen
+      ? createPortal(
+          <div className="seashell-wordsets-shell seashell-crt">
+            <button
+              type="button"
+              className="seashell-wordsets-shell__backdrop"
+              aria-label="Закрыть"
+              onClick={closeWordSetsModalDiscard}
+            />
+            <div
+              className="seashell-wordsets-shell__dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="seashell-wordsets-title"
+            >
+              <div className="seashell-wordsets-shell__head">
+                <ModalDismissButton onClick={closeWordSetsModalDiscard} />
+                <Text weight="2" id="seashell-wordsets-title" className="seashell-wordsets-shell__title">
+                  Добавить в группу
+                </Text>
+              </div>
+              <div className="seashell-wordsets-shell__body">
+                <Box
+                  style={{
+                    paddingTop: 12,
+                    paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
+                    paddingLeft: 'max(16px, env(safe-area-inset-left, 0px))',
+                    paddingRight: 'max(16px, env(safe-area-inset-right, 0px))',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {setsLoading ? (
+                    <Box style={{ display: 'flex', justifyContent: 'center', padding: 16 }}>
+                      <Spinner />
+                    </Box>
+                  ) : null}
+
+                  {!setsLoading && sets.length === 0 ? (
+                    <Footnote>Пока нет групп — создай первую ниже или в разделе «Мои группы».</Footnote>
+                  ) : null}
+
+                  {!setsLoading && sets.length > 0 ? (
+                    <Box style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {sets.map((s) => (
+                        <Checkbox
+                          key={s.id}
+                          checked={pendingSetIds.some((x) => Number(x) === Number(s.id))}
+                          onChange={() => togglePendingSet(s.id)}
+                        >
+                          {s.name}
+                        </Checkbox>
+                      ))}
+                    </Box>
+                  ) : null}
+
+                  <Separator style={{ margin: '18px 0' }} />
+
+                  <Box style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <Text weight="2" Component="label" htmlFor="seashell-modal-new-set">
+                      Новая группа
+                    </Text>
+                    <Input
+                      id="seashell-modal-new-set"
+                      value={modalNewSetName}
+                      onChange={(e) => setModalNewSetName(e.target.value)}
+                      placeholder="например: Кухня"
+                      disabled={creatingSetInModal}
+                    />
+                  </Box>
+
+                  <Box style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <Button
+                      type="button"
+                      size="l"
+                      stretched
+                      loading={creatingSetInModal}
+                      disabled={!modalNewSetName.trim() || creatingSetInModal}
+                      onClick={() => void createSetFromModal()}
+                    >
+                      Создать и выбрать
+                    </Button>
+                    <Button
+                      type="button"
+                      size="l"
+                      stretched
+                      disabled={refreshing || setsLoading}
+                      onClick={() => void saveWordSets()}
+                    >
+                      Сохранить
+                    </Button>
+                    <Button
+                      type="button"
+                      size="l"
+                      stretched
+                      mode="secondary"
+                      disabled={creatingSetInModal}
+                      onClick={closeWordSetsModalDiscard}
+                    >
+                      Отмена
+                    </Button>
+                  </Box>
+                </Box>
+              </div>
+            </div>
+          </div>,
+          splitModalMount,
+        )
+      : null;
+
   return (
     <Panel id={id}>
-      <ModalRoot
-        activeModal={wordSetsModalOpen ? WORD_SETS_MODAL_ID : null}
-        onClose={closeWordSetsModalDiscard}
-      >
-        <ModalPage
-          id={WORD_SETS_MODAL_ID}
-          settlingHeight={90}
-          hideCloseButton
-          onClose={closeWordSetsModalDiscard}
-          header={
-            <ModalPageHeader before={<ModalDismissButton onClick={closeWordSetsModalDiscard} />}>
-              Добавить в группу
-            </ModalPageHeader>
-          }
-        >
-          <div className="seashell-crt seashell-crt--modal">
-            <Box
-              style={{
-                padding: '12px 16px calc(20px + env(safe-area-inset-bottom, 0px))',
-                boxSizing: 'border-box',
-              }}
-            >
-              {setsLoading ? (
-                <Box style={{ display: 'flex', justifyContent: 'center', padding: 16 }}>
-                  <Spinner />
-                </Box>
-              ) : null}
-
-              {!setsLoading && sets.length === 0 ? (
-                <Footnote>Пока нет групп — создай первую ниже или в разделе «Мои группы».</Footnote>
-              ) : null}
-
-              {!setsLoading && sets.length > 0 ? (
-                <Box style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {sets.map((s) => (
-                    <Checkbox
-                      key={s.id}
-                      checked={pendingSetIds.some((x) => Number(x) === Number(s.id))}
-                      onChange={() => togglePendingSet(s.id)}
-                    >
-                      {s.name}
-                    </Checkbox>
-                  ))}
-                </Box>
-              ) : null}
-
-              <Separator style={{ margin: '18px 0' }} />
-
-              <FormItem top="Новая группа">
-                <Input
-                  value={modalNewSetName}
-                  onChange={(e) => setModalNewSetName(e.target.value)}
-                  placeholder="например: Кухня"
-                  disabled={creatingSetInModal}
-                />
-              </FormItem>
-              <FormItem>
-                <Button
-                  type="button"
-                  size="l"
-                  stretched
-                  loading={creatingSetInModal}
-                  disabled={!modalNewSetName.trim() || creatingSetInModal}
-                  onClick={() => void createSetFromModal()}
-                >
-                  Создать и выбрать
-                </Button>
-              </FormItem>
-
-              <FormItem>
-                <Button
-                  type="button"
-                  size="l"
-                  stretched
-                  disabled={refreshing || setsLoading}
-                  onClick={() => void saveWordSets()}
-                >
-                  Сохранить
-                </Button>
-                <Button
-                  type="button"
-                  size="l"
-                  stretched
-                  mode="secondary"
-                  style={{ marginTop: 8 }}
-                  disabled={creatingSetInModal}
-                  onClick={closeWordSetsModalDiscard}
-                >
-                  Отмена
-                </Button>
-              </FormItem>
-            </Box>
-          </div>
-        </ModalPage>
-      </ModalRoot>
+      {wordSetsModal}
 
       <PanelHeader before={<PanelHeaderBack onClick={onBack} />}>
         {selectedId != null ? headerTitle : screen === 'group' ? activeSetName : 'Словарь'}

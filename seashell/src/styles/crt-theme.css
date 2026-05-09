@@ -13,6 +13,112 @@ body,
 }
 
 /*
+ * Портал для модалок Seashell (fixed, вне SplitLayout). pointer-events: none — пока слой пустой;
+ * у открытой модалки корень с pointer-events: auto перехватывает клики.
+ */
+.seashell-global-modal-mount {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* Собственный «лист» групп: без VKUI ModalPage / bottom sheet — стабильная вёрстка и скролл. */
+.seashell-wordsets-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
+}
+
+@media (min-width: 768px) {
+  .seashell-wordsets-shell {
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+  }
+}
+
+.seashell-wordsets-shell__backdrop {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: rgba(4, 6, 10, 0.72);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.seashell-wordsets-shell__dialog {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  max-height: min(92dvh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: var(--crt-bg-elev);
+  border: 1px solid var(--crt-border);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.45);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+@media (min-width: 768px) {
+  .seashell-wordsets-shell__dialog {
+    border-radius: 8px;
+    max-height: min(88vh, 620px);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  }
+}
+
+.seashell-wordsets-shell__head {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 6px 52px;
+  border-bottom: 1px solid var(--crt-border);
+  background: var(--crt-bg-elev);
+}
+
+.seashell-wordsets-shell__head .vkuiModalDismissButton__host {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--crt-fg) !important;
+}
+
+.seashell-wordsets-shell__title {
+  margin: 0;
+  text-align: center;
+  color: var(--crt-fg) !important;
+}
+
+.seashell-wordsets-shell__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/*
  * VKUI вешает .vkui на documentElement — часть кнопок/модалок берёт акцент оттуда.
  */
 html.vkui {
@@ -61,12 +167,6 @@ html.vkui {
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
   text-shadow: 0 0 1px rgba(216, 222, 233, 0.12);
-}
-
-.seashell-crt.seashell-crt--modal {
-  min-height: 0 !important;
-  height: auto;
-  background: transparent !important;
 }
 
 .seashell-crt .vkuiSplitLayout__host,
@@ -249,7 +349,7 @@ html.vkui {
 }
 
 .seashell-crt .vkuiFormItem__top,
-.seashell-crt [class*='FormItem'] label {
+.seashell-crt .vkuiFormItem__label {
   color: var(--crt-fg-dim) !important;
 }
 

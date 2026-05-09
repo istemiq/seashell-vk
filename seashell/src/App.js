@@ -7,6 +7,7 @@ import bridge from '@vkontakte/vk-bridge';
 import { View, SplitLayout, SplitCol, ScreenSpinner } from '@vkontakte/vkui';
 import { useActiveVkuiLocation } from '@vkontakte/vk-mini-apps-router';
 
+import { SplitModalSlotContext } from './context/SplitModalSlotContext.js';
 import { Persik, Home, Dictionary, Practice, Readme, Settings } from './panels';
 import { DEFAULT_VIEW_PANELS } from './routes';
 import { withTimeout } from './utils/withTimeout.js';
@@ -20,6 +21,7 @@ export const App = () => {
   const { panel: activePanel = DEFAULT_VIEW_PANELS.HOME } = useActiveVkuiLocation();
   const [fetchedUser, setUser] = useState();
   const [popout, setPopout] = useState(<ScreenSpinner />);
+  const [splitModalMountEl, setSplitModalMountEl] = useState(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -43,18 +45,29 @@ export const App = () => {
   }, []);
 
   return (
-    <SplitLayout>
-      <SplitCol>
-        <View activePanel={activePanel}>
-          <Home id="home" fetchedUser={fetchedUser} />
-          <Persik id="persik" />
-          <Dictionary id="dictionary" />
-          <Practice id="practice" />
-          <Readme id="readme" />
-          <Settings id="settings" />
-        </View>
-      </SplitCol>
-      {popout}
-    </SplitLayout>
+    <SplitModalSlotContext.Provider value={splitModalMountEl}>
+      {/*
+       * НЕ через SplitLayout modal: во flex-сетке второй столбец схлопывается (~0 px) — модалка «в столбец» из букв.
+       * Отдельный fixed-слой вне SplitLayout сохраняет полную ширину и координаты мини-приложения без transform Panel.
+       */}
+      <SplitLayout>
+        <SplitCol>
+          <View activePanel={activePanel}>
+            <Home id="home" fetchedUser={fetchedUser} />
+            <Persik id="persik" />
+            <Dictionary id="dictionary" />
+            <Practice id="practice" />
+            <Readme id="readme" />
+            <Settings id="settings" />
+          </View>
+        </SplitCol>
+        {popout}
+      </SplitLayout>
+      <div
+        ref={setSplitModalMountEl}
+        className="seashell-global-modal-mount"
+        aria-hidden="true"
+      />
+    </SplitModalSlotContext.Provider>
   );
 };
