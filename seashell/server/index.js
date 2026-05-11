@@ -7,6 +7,7 @@ import './load-env.js';
 import express from 'express';
 import cors from 'cors';
 import { verifyVkLaunchParams } from './vkSignature.js';
+import { assertAllowedUserContent } from './contentPolicy.js';
 import {
   initDb,
   listWords,
@@ -155,6 +156,8 @@ app.post('/api/practice/turn', limitPractice, async (req, res) => {
   if (!userText || userText.length > 4000) {
     return res.status(400).json({ error: 'Invalid text' });
   }
+  const pol = assertAllowedUserContent(userText);
+  if (!pol.ok) return res.status(400).json({ error: pol.error });
   const historyRaw = Array.isArray(req.body?.history) ? req.body.history : [];
   const history = historyRaw
     .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string')
@@ -205,6 +208,8 @@ app.post('/api/sets', async (req, res) => {
   if (!name || name.length > 80) {
     return res.status(400).json({ error: 'Invalid name' });
   }
+  const pol = assertAllowedUserContent(name);
+  if (!pol.ok) return res.status(400).json({ error: pol.error });
   try {
     const created = await createSet(req.vkUserId, name);
     res.status(201).json(created);
@@ -223,6 +228,8 @@ app.patch('/api/sets/:id', async (req, res) => {
   const name = String(req.body?.name ?? '').trim().replace(/\s+/g, ' ');
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
   if (!name || name.length > 80) return res.status(400).json({ error: 'Invalid name' });
+  const pol = assertAllowedUserContent(name);
+  if (!pol.ok) return res.status(400).json({ error: pol.error });
   try {
     const updated = await renameSet(req.vkUserId, id, name);
     if (!updated) return res.status(404).json({ error: 'Not found' });
@@ -294,6 +301,8 @@ async function handleRefreshExamples(req, res) {
     if (!row) {
       return res.status(404).json({ error: 'Not found' });
     }
+    const pol = assertAllowedUserContent(row.word);
+    if (!pol.ok) return res.status(400).json({ error: pol.error });
     const generated = await generateWordExamples(row.word);
     const saved = await replaceExamplesForWord(req.vkUserId, id, generated);
     res.json(saved);
@@ -312,6 +321,8 @@ app.post('/api/words', limitGeneration, async (req, res) => {
   if (!word || word.length > 200) {
     return res.status(400).json({ error: 'Invalid word' });
   }
+  const pol = assertAllowedUserContent(word);
+  if (!pol.ok) return res.status(400).json({ error: pol.error });
 
   try {
     if (await findWordByLemma(req.vkUserId, word)) {

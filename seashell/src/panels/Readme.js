@@ -6,33 +6,19 @@ import {
   Header,
   Text,
   Button,
-  Separator,
-  Footnote,
 } from '@vkontakte/vkui';
-import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import PropTypes from 'prop-types';
 
 import { useNavigateBackOrHome } from '../utils/useNavigateBackOrHome.js';
+import { openInBrowser } from '../utils/openInBrowser.js';
+import { getPrivacyPolicyPageUrl } from '../utils/privacyPolicyUrl.js';
 
 export const Readme = ({ id }) => {
   const goBackOrHome = useNavigateBackOrHome();
-  const routeNavigator = useRouteNavigator();
-
-  const goHome = () => void routeNavigator.replace('/');
-  /** Стрелка в шапке использует историю; если её нет во ВК при открытии сразу сюда — сработает переход на «/». */
-  const headerBack = () => void goBackOrHome();
 
   return (
     <Panel id={id}>
-      <PanelHeader before={<PanelHeaderBack onClick={headerBack} />}>Справка</PanelHeader>
-
-      <Group separator="hide" padding="s">
-        <Button type="button" mode="secondary" size="m" stretched onClick={goHome}>
-          На главную (если стрелка не срабатывает)
-        </Button>
-      </Group>
-
-      <Separator />
+      <PanelHeader before={<PanelHeaderBack onClick={() => void goBackOrHome()} />}>Справка</PanelHeader>
 
       <Group header={<Header mode="secondary">Что это за приложение</Header>}>
         <Text style={{ lineHeight: 1.6 }}>
@@ -99,39 +85,21 @@ export const Readme = ({ id }) => {
         </Text>
       </Group>
 
-      <Group header={<Header mode="secondary">Как вернуться из «Справки»</Header>}>
-        <Text style={{ lineHeight: 1.6 }}>
-          1) Нажмите <strong>стрелку «Назад»</strong> в левой части шапки (как обычно в VK-приложениях).
-          <br />
-          2) Если стрелка не реагирует или не показывается в вашей среде, нажмите крупную серую кнопку ниже названия экрана:{' '}
-          <strong>«На главную»</strong> — это всегда откроет начальный экран приложения заново по адресу маршрута «/», без обходных
-          путей.
+      <Group header={<Header mode="secondary">Юридическое</Header>}>
+        <Text style={{ lineHeight: 1.6, marginBottom: 10 }}>
+          Политика конфиденциальности. Откроется в браузере.
         </Text>
-      </Group>
-
-      <Separator />
-
-      <Group header={<Header mode="secondary">Для разработчика (деплой на VK Hosting)</Header>}>
-        <Text style={{ lineHeight: 1.6 }}>
-          После сборки статики нужен токен доступа загрузки (создаётся в кабинете VK для мини-приложения). Из каталога{' '}
-          <strong>seashell</strong> после <code style={{ wordBreak: 'break-all' }}>npm run build</code>:
-        </Text>
-        <Footnote style={{ marginTop: 10 }}>
-          PowerShell — задать переменную и вызвать deploy:
-          <br />
-          <span style={{ display: 'block', marginTop: 6 }}>
-            $env:MINI_APPS_ACCESS_TOKEN=&quot;ВАШ_ТОКЕН&quot;
-          </span>
-          <span style={{ display: 'block', marginTop: 4 }}>npm run deploy</span>
-        </Footnote>
-        <Footnote style={{ marginTop: 12 }}>
-          Пользователям приложения эти строки выполнять не нужно — только автору сборки сайта Seashell во ВКонтакте.
-        </Footnote>
-      </Group>
-
-      <Group separator="hide" padding="s">
-        <Button type="button" mode="secondary" size="m" stretched onClick={goHome}>
-          На главную
+        <Button
+          type="button"
+          mode="secondary"
+          size="m"
+          stretched
+          onClick={() => {
+            const url = getPrivacyPolicyPageUrl();
+            if (url) void openInBrowser(url);
+          }}
+        >
+          Политика конфиденциальности
         </Button>
       </Group>
     </Panel>
