@@ -1,9 +1,11 @@
-import { Panel, PanelHeader, PanelHeaderBack, Group, Header, FormItem, Switch, Slider } from '@vkontakte/vkui';
+import { Panel, PanelHeader, PanelHeaderBack, Group, Header, FormItem, Switch, Slider, Button, Footnote } from '@vkontakte/vkui';
 import PropTypes from 'prop-types';
 import { useMemo, useState } from 'react';
 
 import { loadSettings, updateSettings } from '../utils/settings.js';
 import { useNavigateBackOrHome } from '../utils/useNavigateBackOrHome.js';
+import { openInBrowser } from '../utils/openInBrowser.js';
+import { getPrivacyPolicyPageUrl } from '../utils/privacyPolicyUrl.js';
 
 export const Settings = ({ id }) => {
   const goBackOrHome = useNavigateBackOrHome();
@@ -33,6 +35,24 @@ export const Settings = ({ id }) => {
             disabled={!s.ttsEnabled}
           />
         </FormItem>
+      </Group>
+
+      <Group header={<Header mode="secondary">Юридическое</Header>}>
+        <Footnote style={{ marginBottom: 10 }}>
+          Ссылка для кабинета VK (модерация, политика конфиденциальности). Откроется в браузере.
+        </Footnote>
+        <Button
+          type="button"
+          mode="secondary"
+          size="m"
+          stretched
+          onClick={() => {
+            const url = getPrivacyPolicyPageUrl();
+            if (url) void openInBrowser(url);
+          }}
+        >
+          Политика конфиденциальности
+        </Button>
       </Group>
     </Panel>
   );
