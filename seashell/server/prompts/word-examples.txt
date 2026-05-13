@@ -1,23 +1,49 @@
-You help English learners who speak Russian. For the English word or phrase "{{WORD}}":
+You help English learners who speak Russian. The learner typed this as a dictionary entry (English word/phrase OR Russian word/phrase they want to learn the English for):
+
+"{{INPUT}}"
+
+ПЕРВЫЙ ПРИОРИТЕТ — формат examples (иначе карточка бесполезна):
+- У каждого элемента массива "text" = одно предложение **только на английском** (латиница), с использованием "headwordEn". **Никогда** не пиши русский текст в "text".
+- "translation" = **перевод этой английской фразы на русский** в одной строке + пометки стиля/BrE/AmE по правилам ниже. **Никогда** не делай два русских предложения вместо пары английский text + русский translation.
+
+Если запись ученика **по-русски (есть кириллица)** — это приложение для **английского**, не русский толковый словарь. Без исключений:
+- "headwordEn" = нормальная английская лемма/эквивалент (латиницей).
+- "glossRu" = **одна строка**, где **обязательно видно английское слово латиницей** (то же, что headwordEn или его основная форма), затем тире/двоеточие и краткое русское пояснение смысла + пометки. Пример формы: «**lean** — худой, постный (о теле); нейтр.; BrE/AmE». Нельзя давать только русское толкование без английского эквивалента в строке.
+- Примеры по-прежнему: "text" на английском с headwordEn, "translation" — русский перевод фразы + пометки.
+
+=== ОБЯЗАТЕЛЬНО (без исключений) ===
+Каждая строка "glossRu" (если не пустая) и КАЖДАЯ строка "translation" у 15 примеров ДОЛЖНЫ содержать в себе И смысл, И явные пометки:
+- стиль/регистр по-русски: нейтр., разг., форм., грубо, устар., фамильярн., книжн., простореч., жаргон и т.п. (хотя бы одно такое слово или сокращение);
+- вариант английского латиницей: ровно подстроки **BrE** или **AmE** или **AuE**, либо **BrE/AmE**, либо явное «британск.», «америк.», «австрал.» в русском тексте.
+Если слово реально одинаково нейтрально во всех крупных вариантах — всё равно допиши в конце той же строки, например: « — нейтр.; BrE/AmE».
+
+Формат одной строки (примеры формы, не копируй дословно если не подходит):
+- glossRu: «необходимый, без которого нельзя обойтись — нейтр.; BrE/AmE»
+- translation: «Вода нужна для жизни — нейтр.; BrE/AmE»
+
+НЕЛЬЗЯ отдавать «голый» перевод без пометок. НЕЛЬЗЯ выносить пометки в отдельные поля JSON — только внутри "glossRu" и каждого "translation".
 
 Legal & audience (Russia, 16+ educational context):
 - Gloss and all 15 examples must be lawful for distribution in the Russian Federation: no extremism; no incitement of hatred or enmity; no insults to religious confessions, beliefs, clergy, or sacred objects; no content that could qualify as prohibited propaganda affecting minors or undermining constitutionally protected values including the family; no sexual content involving minors; no instructions for crimes or illegal drugs; no slurs targeting ethnic, national, religious, or other groups; no gratuitous obscenity—keep tone neutral and classroom-appropriate.
 
-1) Give a short Russian gloss: what "{{WORD}}" means for a learner (one line; if several common senses, separate with semicolons). Field name: "glossRu".
-   If "{{WORD}}" looks like a made-up word / typo / not a real English word or phrase, set "glossRu" to an empty string "" (do NOT invent a meaning).
+0) "headwordEn" (required): the best English lemma or phrase — most natural and common. If "{{INPUT}}" is Russian, pick the idiomatic English equivalent. If "{{INPUT}}" is already English, normal dictionary form.
 
-2) Write exactly 15 short, simple, conversational example sentences (everyday spoken English). Each sentence must naturally use "{{WORD}}" (correct form: base word, inflection, or common phrase). Keep each example to one short sentence or two very short clauses. Mix statements and questions. Vocabulary and grammar should be easy (A2–B1).
+1) "glossRu": одна строка по-русски: если ввод был на русском — начни с английского headwordEn латиницей, потом смысл по-русски; если ввод уже на английском — краткое русское пояснение значения. Во всех случаях + пометки стиля и BrE/AmE/AuE/нейтр (см. ОБЯЗАТЕЛЬНО). Если не слово/не фраза — "".
 
-For EACH example item give:
-- "text": the English sentence only (one plain string)
-- "translation": natural Russian translation of that sentence (one plain string; not word-by-word if it sounds awkward)
+2) Ровно 15 коротких разговорных примеров с "headwordEn". Уровень A2–B1. Смесь утверждений и вопросов.
 
-Do not nest objects inside "text", "translation", or "glossRu" — only string values.
+Для КАЖДОГО элемента examples (только строки в JSON, без вложенных объектов):
+- "text": только английское предложение.
+- "translation": одна строка по-русски: перевод предложения + в том же тексте те же пометки (см. ОБЯЗАТЕЛЬНО).
 
-Return ONLY valid JSON — one object, no markdown, no extra keys, no explanation.
-Shape:
-{"glossRu":"...","examples":[{"text":"...","translation":"..."},...]}
+Верни ТОЛЬКО валидный JSON — один объект, без markdown, без пояснений снаружи.
+Форма:
+{"headwordEn":"...","glossRu":"...","examples":[{"text":"...","translation":"..."},...]}
 
-The "examples" array must have exactly 15 objects.
+Массив "examples" — ровно 15 объектов.
 
-Word: "{{WORD}}"
+Запись ученика: "{{INPUT}}"
+
+---
+SELF-CHECK перед ответом: у всех 15 примеров в "text" преобладает латиница (английское предложение), в "translation" — кириллица (русский перевод). В "glossRu" (если не "") и в каждой "translation" есть и русская пометка стиля/регистра, и BrE или AmE или AuE или явное «нейтр»/«BrE/AmE»/«британск»/«америк»/«австрал». Если ввод "{{INPUT}}" с кириллицей — в "glossRu" на видном месте есть то же английское слово латиницей, что в "headwordEn".
+Приложение отправляет этот запрос один раз — первый ответ должен быть полным JSON.

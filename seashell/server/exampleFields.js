@@ -53,3 +53,34 @@ export function russianLineFromItem(item) {
     item.translation ?? item.ru ?? item.ru_translation ?? item.russian ?? item.meaning,
   );
 }
+
+/** Стилистика / регион (отдельное поле в JSON и в БД). */
+export function stylisticNoteFromItem(item) {
+  if (item == null || typeof item === 'string') return '';
+  if (typeof item !== 'object') return '';
+  return lineFromField(
+    item.noteRu ??
+      item.note_ru ??
+      item.styleRu ??
+      item.style_ru ??
+      item.register_ru ??
+      item.register ??
+      item.hintRu ??
+      '',
+  );
+}
+
+/**
+ * Старый формат: весь комментарий в конце translation в скобках — отделяем для note_ru.
+ * @returns {{ translation: string, noteRu: string }}
+ */
+export function splitTranslationTail(translation) {
+  const raw = String(translation ?? '').trim();
+  if (!raw) return { translation: '', noteRu: '' };
+  const m = raw.match(/^(.+?)\s*[\(\（]([^)\）]+)[\)\）]\s*$/);
+  if (!m) return { translation: raw, noteRu: '' };
+  const base = m[1].trim();
+  const note = m[2].trim();
+  if (!base) return { translation: raw, noteRu: '' };
+  return { translation: base, noteRu: note };
+}

@@ -242,6 +242,7 @@ export const Dictionary = ({ id }) => {
       }
       setNewWord('');
       await loadList();
+      // Остаёмся в списке слов; карточку открываем только по тапу на слово.
     } catch (e) {
       setError(e.message || 'Не удалось добавить');
       setTtsOpenOffer(false);
@@ -289,6 +290,8 @@ export const Dictionary = ({ id }) => {
   const ex = detail?.examples?.[exampleIdx];
   const currentExampleText = lineFromExampleField(ex?.text);
   const currentExampleRu = lineFromExampleField(ex?.translation);
+  // Старые карточки с колонкой note_ru — показываем второй строкой.
+  const legacyExampleNoteRu = lineFromExampleField(ex?.note_ru);
 
   const headerTitle = selectedId != null ? (detail?.word || '…') : 'Словарь';
   const activeSetName =
@@ -731,11 +734,11 @@ export const Dictionary = ({ id }) => {
 
           {(screen === 'dictionary' || screen === 'group') && (
             <Group header={<Header mode="secondary">{screen === 'group' ? 'Новое слово в группе' : 'Новое слово'}</Header>}>
-            <FormItem top="Английское слово или фраза">
+            <FormItem top="Слово или фраза (EN или RU)">
               <Input
                 value={newWord}
                 onChange={(e) => setNewWord(e.target.value)}
-                placeholder="например: matter"
+                placeholder="например: matter или Мне всё равно"
                 disabled={adding}
               />
             </FormItem>
@@ -752,8 +755,8 @@ export const Dictionary = ({ id }) => {
               </Button>
               <Footnote style={{ marginTop: 8 }}>
                 {screen === 'group'
-                  ? 'Слово добавится в эту группу. Примеры и переводы подберём автоматически.'
-                  : 'Подберём примеры и переводы автоматически. «Другой пример» переключает сохранённые карточки.'}
+                  ? 'Слово добавится в эту группу. Можно ввести по-русски — в словарь запишем естественный английский эквивалент, примеры и переводы с пометками стиля (нейтр., разг., BrE и т.д.).'
+                  : 'Можно ввести по-русски — в словарь запишем естественный английский эквивалент. Подберём примеры и переводы; в скобках — стиль и BrE/AmE, где важно. «Другой пример» переключает карточки.'}
               </Footnote>
             </FormItem>
             </Group>
@@ -847,6 +850,11 @@ export const Dictionary = ({ id }) => {
                     хочешь ещё попытку.
                   </Footnote>
                 )}
+                {lineFromExampleField(detail?.gloss_note_ru) ? (
+                  <Footnote style={{ marginTop: 10, lineHeight: 1.5, opacity: 0.95 }}>
+                    Доп. к головному значению (старая карточка): {lineFromExampleField(detail.gloss_note_ru)}
+                  </Footnote>
+                ) : null}
                 <Separator style={{ margin: '12px 0' }} />
                 <Text weight="2">Пример {exampleIdx + 1} из {detail.examples.length}</Text>
                 <Separator style={{ margin: '12px 0' }} />
@@ -858,6 +866,11 @@ export const Dictionary = ({ id }) => {
                     ) : (
                       <Footnote style={{ marginTop: 10 }}>Перевода этой карточки нет.</Footnote>
                     )}
+                    {legacyExampleNoteRu ? (
+                      <Footnote style={{ marginTop: 10, lineHeight: 1.5, opacity: 0.92 }}>
+                        Пометка (старая карточка): {legacyExampleNoteRu}
+                      </Footnote>
+                    ) : null}
                   </>
                 ) : (
                   <Footnote>

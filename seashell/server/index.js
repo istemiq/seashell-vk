@@ -325,12 +325,20 @@ app.post('/api/words', limitGeneration, async (req, res) => {
   if (!pol.ok) return res.status(400).json({ error: pol.error });
 
   try {
-    if (await findWordByLemma(req.vkUserId, word)) {
+    const generated = await generateWordExamples(word);
+    const lemma = normalizeWord(generated.headwordEn);
+    if (!lemma || lemma.length > 200) {
+      return res.status(400).json({ error: 'Invalid word' });
+    }
+    const polLemma = assertAllowedUserContent(lemma);
+    if (!polLemma.ok) return res.status(400).json({ error: polLemma.error });
+
+    if (await findWordByLemma(req.vkUserId, lemma)) {
       return res.status(409).json({ error: 'Word already exists' });
     }
 
-    const generated = await generateWordExamples(word);
-    const saved = await insertWordWithExamples(req.vkUserId, word, generated);
+    const { headwordEn: _drop, ...payload } = generated;
+    const saved = await insertWordWithExamples(req.vkUserId, lemma, payload);
     res.status(201).json(saved);
   } catch (e) {
     console.error(e);

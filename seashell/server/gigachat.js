@@ -8,7 +8,13 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { Agent, fetch as undiciFetch } from 'undici';
-import { englishLineFromItem, lineFromField, russianLineFromItem } from './exampleFields.js';
+import {
+  englishLineFromItem,
+  lineFromField,
+  russianLineFromItem,
+  stylisticNoteFromItem,
+  splitTranslationTail,
+} from './exampleFields.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -120,9 +126,83 @@ function loadPromptTemplate() {
   return fs.readFileSync(p, 'utf8');
 }
 
-function fillPrompt(word) {
-  const w = String(word).trim();
-  return loadPromptTemplate().replaceAll('{{WORD}}', w);
+function fillPrompt(userInput) {
+  const w = String(userInput).trim();
+  return loadPromptTemplate().replaceAll('{{INPUT}}', w).replaceAll('{{WORD}}', w);
+}
+
+/** Краткое system-сообщение: формат JSON и стилистика в той же строке (без серверного regex). */
+const DICTIONARY_SYSTEM_EXTRA = `Dictionary JSON only: no markdown, no code fences, one JSON object only.
+
+Fields: "headwordEn", "glossRu", "examples" (exactly 15 objects). Each example: "text" (English), "translation" (Russian).
+
+The "text" field must be English only (Latin letters for the sentence). The "translation" field must be the Russian rendering of that same English sentence, not a second unrelated Russian sentence.
+
+CRITICAL: Every non-empty "glossRu" and every "translation" must be ONE Russian line that includes BOTH (1) register/style words in Russian (e.g. нейтр., разг., форм.) AND (2) English variety markers BrE and/or AmE and/or AuE or explicit нейтр./BrE/AmE in the same line. Never output bare translations without these tags. Do not use extra JSON keys for notes.
+
+If the learner's entry contains Cyrillic: this is an English-learning app — glossRu must visibly include the same English headword (Latin letters) as headwordEn (e.g. "lean — худой…"), not a Russian-only monolingual definition.`;
+
+/** True if строка в основном латиница (англ. ввод без headwordEn из модели — допустимый fallback). */
+function looksMostlyEnglish(s) {
+  const t = String(s).replace(/\s+/g, '');
+  if (!t) return false;
+  let latin = 0;
+  let cyr = 0;
+  for (const ch of t) {
+    if (/[A-Za-z]/.test(ch)) latin += 1;
+    if (/[\u0400-\u04FF]/.test(ch)) cyr += 1;
+  }
+  return latin > 0 && latin >= cyr;
+}
+
+/** Кириллицы больше, чем латиницы (типичный русский текст). */
+function looksMostlyCyrillic(s) {
+  const t = String(s ?? '').replace(/\s+/g, '');
+  if (!t) return false;
+  let latin = 0;
+  let cyr = 0;
+  for (const ch of t) {
+    if (/[A-Za-z]/.test(ch)) latin += 1;
+    if (/[\u0400-\u04FF]/.test(ch)) cyr += 1;
+  }
+  return cyr > 0 && cyr > latin;
+}
+
+/**
+ * В glossRu должна быть видна английская лемма. При «Обновить примеры» в API приходит уже англ. слово (lemma), не кириллица ввода — поэтому смотрим ещё и на сам gloss: если он в основном русский без леммы, дописываем «lemma — …».
+ */
+function glossAlreadyContainsLemma(gloss, lemma) {
+  const g = String(gloss).trim();
+  const hw = String(lemma).trim();
+  if (!g || !hw) return true;
+  if (!/\s/.test(hw)) {
+    const esc = hw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return (
+      new RegExp(`(?:^|[^A-Za-z])${esc}(?:[^A-Za-z]|$)`, 'i').test(g) || new RegExp(`^${esc}\\b`, 'i').test(g)
+    );
+  }
+  return g.toLowerCase().includes(hw.toLowerCase());
+}
+
+function ensureGlossRuShowsEnglishLemma(userWord, headwordEn, glossNullable) {
+  if (glossNullable == null) return null;
+  const raw = String(glossNullable).trim();
+  if (!raw) return null;
+  const hw = String(headwordEn ?? '').trim();
+  if (!hw) return raw;
+  if (glossAlreadyContainsLemma(raw, hw)) return raw;
+  const needPrefix = !looksMostlyEnglish(userWord) || looksMostlyCyrillic(raw);
+  if (!needPrefix) return raw;
+  return `${hw} — ${raw}`;
+}
+
+function pickHeadwordEnFromParsed(parsed) {
+  const keys = ['headwordEn', 'headword', 'englishHeadword', 'lemmaEn', 'wordEn'];
+  for (const k of keys) {
+    const v = parsed[k];
+    if (typeof v === 'string' && v.trim()) return v.trim().replace(/\s+/g, ' ');
+  }
+  return '';
 }
 
 function extractJsonArray(text) {
@@ -148,13 +228,26 @@ function extractJsonArray(text) {
 function parseObjectPayload(parsed) {
   const glossRaw =
     parsed.glossRu ?? parsed.gloss_ru ?? parsed.wordRu ?? parsed.ru_gloss ?? parsed.gloss;
-  const glossRu =
+  let glossRu =
     typeof glossRaw === 'string' ? glossRaw.trim() : lineFromField(glossRaw);
+  const glossNoteRaw = parsed.glossNoteRu ?? parsed.gloss_note_ru;
+  const glossNoteRu =
+    typeof glossNoteRaw === 'string' ? glossNoteRaw.trim() : lineFromField(glossNoteRaw);
+  if (glossNoteRu) {
+    if (glossRu) glossRu = `${glossRu} (${glossNoteRu})`;
+    else glossRu = glossNoteRu;
+  }
   const arr = parsed.examples ?? parsed.items ?? parsed.sentences;
   if (!Array.isArray(arr)) {
     throw new Error('Expected examples array in JSON object');
   }
-  return { glossRu: glossRu || '', examples: normalizeExamples(arr) };
+  const headwordEn = pickHeadwordEnFromParsed(parsed);
+  return {
+    glossRu: glossRu || '',
+    glossNoteRu: '',
+    examples: normalizeExamples(arr),
+    headwordEn,
+  };
 }
 
 /** Объект { glossRu, examples } или устаревший массив из 15 примеров. */
@@ -163,7 +256,7 @@ function extractGenerationPayload(text) {
   try {
     const parsed = JSON.parse(t);
     if (Array.isArray(parsed)) {
-      return { glossRu: '', examples: normalizeExamples(parsed) };
+      return { glossRu: '', glossNoteRu: '', examples: normalizeExamples(parsed), headwordEn: '' };
     }
     if (parsed && typeof parsed === 'object') {
       try {
@@ -188,20 +281,42 @@ function extractGenerationPayload(text) {
     }
   }
   const arr = extractJsonArray(text);
-  return { glossRu: '', examples: normalizeExamples(arr) };
+  return { glossRu: '', glossNoteRu: '', examples: normalizeExamples(arr), headwordEn: '' };
 }
 
-/** Нормализует ответ модели к { text, translation }[] (старый формат — только строки). */
+/** Нормализует ответ модели к { text, translation, noteRu }[]; пометки только в translation, noteRu пустой. */
 function normalizeExamples(arr) {
   const out = [];
   for (const item of arr) {
     if (typeof item === 'string') {
       const text = item.trim();
-      if (text) out.push({ text, translation: '' });
+      if (text) out.push({ text, translation: '', noteRu: '' });
     } else if (item && typeof item === 'object') {
-      const text = englishLineFromItem(item);
-      const translation = russianLineFromItem(item);
-      if (text) out.push({ text, translation });
+      let text = englishLineFromItem(item);
+      let translation = russianLineFromItem(item);
+      if (
+        text &&
+        translation &&
+        looksMostlyCyrillic(text) &&
+        !looksMostlyCyrillic(translation) &&
+        /[A-Za-z]{2,}/.test(translation)
+      ) {
+        const swap = text;
+        text = translation;
+        translation = swap;
+      }
+      let noteRu = stylisticNoteFromItem(item);
+      const sp = splitTranslationTail(translation);
+      if (sp.noteRu) {
+        translation = sp.translation;
+        if (!String(noteRu).trim()) noteRu = sp.noteRu;
+      }
+      const tr = String(translation).trim();
+      const nt = String(noteRu).trim();
+      let oneLine = tr;
+      if (tr && nt) oneLine = `${tr} (${nt})`;
+      else if (!tr && nt) oneLine = nt;
+      if (text) out.push({ text, translation: oneLine, noteRu: '' });
     }
   }
   return out;
@@ -217,11 +332,7 @@ function sanitizeGlossRu(glossRuRaw) {
   return g;
 }
 
-export async function generateWordExamples(word) {
-  const model = process.env.GIGACHAT_MODEL_NAME || 'GigaChat';
-  const token = await getAccessToken();
-  const userContent = fillPrompt(word);
-
+async function gigaChatWordExamplesCompletion(userContent, model, token, temperature) {
   let res;
   try {
     res = await gigaFetch(CHAT_URL, {
@@ -237,11 +348,13 @@ export async function generateWordExamples(word) {
           {
             role: 'system',
             content:
-              'You output only valid JSON when asked. No markdown fences. Follow the user format exactly.',
+              'You output only one valid JSON object when asked. No markdown fences. Follow the user format exactly.\n\n' +
+              DICTIONARY_SYSTEM_EXTRA,
           },
           { role: 'user', content: userContent },
         ],
-        temperature: 0.6,
+        temperature,
+        max_tokens: 5200,
       }),
     });
   } catch (e) {
@@ -257,17 +370,65 @@ export async function generateWordExamples(word) {
   if (!content || typeof content !== 'string') {
     throw new Error('Empty GigaChat response');
   }
+  return content;
+}
 
-  const { glossRu, examples } = extractGenerationPayload(content);
+/** Температура для генерации словаря: из .env или 0.38. */
+function wordExamplesTemperature() {
+  const raw = process.env.GIGACHAT_WORD_TEMPERATURE?.trim();
+  if (!raw) return 0.38;
+  const n = Number(raw.replace(',', '.'));
+  if (!Number.isFinite(n)) return 0.38;
+  return Math.min(2, Math.max(0, n));
+}
+
+export async function generateWordExamples(word) {
+  const model = process.env.GIGACHAT_MODEL_NAME || 'GigaChat';
+  const token = await getAccessToken();
+  const userContent = fillPrompt(word);
+  const content = await gigaChatWordExamplesCompletion(
+    userContent,
+    model,
+    token,
+    wordExamplesTemperature(),
+  );
+
+  let payload;
+  try {
+    payload = extractGenerationPayload(content);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `Ответ GigaChat не разобрался как JSON (${msg}). Частые причины: в ответе есть markdown вместо чистого JSON, обрезан длинный ответ, или ошибка в структуре. Попробуй ещё раз.`,
+    );
+  }
+  const { glossRu, examples, headwordEn: headFromPayload } = payload;
 
   if (examples.length < 15) {
     throw new Error(`Expected 15 examples, got ${examples.length}`);
   }
 
   const g = sanitizeGlossRu(glossRu);
+  let headwordEn = typeof headFromPayload === 'string' ? headFromPayload.trim().replace(/\s+/g, ' ') : '';
+  if (!headwordEn) {
+    if (looksMostlyEnglish(word)) {
+      headwordEn = String(word).trim().replace(/\s+/g, ' ');
+    } else {
+      throw new Error(
+        'Модель не вернула английскую форму слова (headwordEn). Попробуй добавить ещё раз.',
+      );
+    }
+  }
+
+  const trimmed = examples.slice(0, 15);
+
+  const glossOut = ensureGlossRuShowsEnglishLemma(word, headwordEn, g);
+
   return {
-    glossRu: g || null,
-    examples: examples.slice(0, 15),
+    glossRu: glossOut,
+    glossNoteRu: null,
+    examples: trimmed,
+    headwordEn,
   };
 }
 

@@ -3,7 +3,7 @@
  * Подключение: переменная окружения DATABASE_URL.
  */
 import pg from 'pg';
-import { englishLineFromItem, russianLineFromItem } from './exampleFields.js';
+import { englishLineFromItem, russianLineFromItem, stylisticNoteFromItem } from './exampleFields.js';
 
 const { Pool } = pg;
 
@@ -63,20 +63,25 @@ export async function initDb() {
     PRIMARY KEY (set_id, word_id)
   )`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_word_set_items_word ON word_set_items (word_id)`);
+
+  await pool.query(`ALTER TABLE words ADD COLUMN IF NOT EXISTS gloss_note_ru TEXT`);
+  await pool.query(`ALTER TABLE examples ADD COLUMN IF NOT EXISTS note_ru TEXT`);
 }
 
 /** Разбор ответа GigaChat: либо массив примеров, либо объект { glossRu, examples }. */
 function unpackWordPayload(payload) {
   if (Array.isArray(payload)) {
-    return { glossRu: null, examples: payload };
+    return { glossRu: null, glossNoteRu: null, examples: payload };
   }
   if (payload && typeof payload === 'object') {
     const g = payload.glossRu ?? payload.gloss_ru;
     const glossRu = typeof g === 'string' ? g.trim() || null : null;
+    const gn = payload.glossNoteRu ?? payload.gloss_note_ru;
+    const glossNoteRu = typeof gn === 'string' ? gn.trim() || null : null;
     const examples = payload.examples ?? [];
-    return { glossRu, examples: Array.isArray(examples) ? examples : [] };
+    return { glossRu, glossNoteRu, examples: Array.isArray(examples) ? examples : [] };
   }
-  return { glossRu: null, examples: [] };
+  return { glossRu: null, glossNoteRu: null, examples: [] };
 }
 
 export async function listWords(vkUserId) {
@@ -112,13 +117,13 @@ export async function listWordsInSet(vkUserId, setId) {
 
 export async function getWordWithExamples(vkUserId, wordId) {
   const { rows: wRows } = await pool.query(
-    'SELECT id, word, created_at, gloss_ru FROM words WHERE id = $1 AND vk_user_id = $2',
+    'SELECT id, word, created_at, gloss_ru, gloss_note_ru FROM words WHERE id = $1 AND vk_user_id = $2',
     [wordId, vkUserId],
   );
   const word = wRows[0];
   if (!word) return null;
   const { rows: examples } = await pool.query(
-    'SELECT idx, text, translation FROM examples WHERE word_id = $1 ORDER BY idx ASC',
+    'SELECT idx, text, translation, note_ru FROM examples WHERE word_id = $1 ORDER BY idx ASC',
     [word.id],
   );
   const { rows: setRows } = await pool.query(
@@ -134,14 +139,14 @@ export async function getWordWithExamples(vkUserId, wordId) {
 }
 
 export async function insertWordWithExamples(vkUserId, wordNorm, payload) {
-  const { glossRu, examples: examplesIn } = unpackWordPayload(payload);
+  const { glossRu, glossNoteRu, examples: examplesIn } = unpackWordPayload(payload);
   const createdAt = Date.now();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const ins = await client.query(
-      'INSERT INTO words (vk_user_id, word, created_at, gloss_ru) VALUES ($1, $2, $3, $4) RETURNING id',
-      [vkUserId, wordNorm, createdAt, glossRu],
+      'INSERT INTO words (vk_user_id, word, created_at, gloss_ru, gloss_note_ru) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [vkUserId, wordNorm, createdAt, glossRu, glossNoteRu],
     );
     const wordId = Number(ins.rows[0].id);
     for (let idx = 0; idx < examplesIn.length; idx++) {
@@ -149,9 +154,10 @@ export async function insertWordWithExamples(vkUserId, wordNorm, payload) {
       const text = englishLineFromItem(ex);
       const tr = russianLineFromItem(ex);
       const translation = typeof ex === 'string' ? null : tr || null;
+      const noteRu = typeof ex === 'string' ? null : stylisticNoteFromItem(ex) || null;
       await client.query(
-        'INSERT INTO examples (word_id, idx, text, translation) VALUES ($1, $2, $3, $4)',
-        [wordId, idx, text, translation],
+        'INSERT INTO examples (word_id, idx, text, translation, note_ru) VALUES ($1, $2, $3, $4, $5)',
+        [wordId, idx, text, translation, noteRu],
       );
     }
     await client.query('COMMIT');
@@ -166,7 +172,7 @@ export async function insertWordWithExamples(vkUserId, wordNorm, payload) {
 
 /** Удаляет все примеры слова и записывает новый набор (тот же payload, что у insertWordWithExamples). */
 export async function replaceExamplesForWord(vkUserId, wordId, payload) {
-  const { glossRu, examples: examplesIn } = unpackWordPayload(payload);
+  const { glossRu, glossNoteRu, examples: examplesIn } = unpackWordPayload(payload);
   const { rows } = await pool.query('SELECT id FROM words WHERE id = $1 AND vk_user_id = $2', [
     wordId,
     vkUserId,
@@ -184,15 +190,23 @@ export async function replaceExamplesForWord(vkUserId, wordId, payload) {
         vkUserId,
       ]);
     }
+    if (glossNoteRu != null) {
+      await client.query('UPDATE words SET gloss_note_ru = $1 WHERE id = $2 AND vk_user_id = $3', [
+        glossNoteRu,
+        word.id,
+        vkUserId,
+      ]);
+    }
     await client.query('DELETE FROM examples WHERE word_id = $1', [word.id]);
     for (let idx = 0; idx < examplesIn.length; idx++) {
       const ex = examplesIn[idx];
       const text = englishLineFromItem(ex);
       const tr = russianLineFromItem(ex);
       const translation = typeof ex === 'string' ? null : tr || null;
+      const noteRu = typeof ex === 'string' ? null : stylisticNoteFromItem(ex) || null;
       await client.query(
-        'INSERT INTO examples (word_id, idx, text, translation) VALUES ($1, $2, $3, $4)',
-        [word.id, idx, text, translation],
+        'INSERT INTO examples (word_id, idx, text, translation, note_ru) VALUES ($1, $2, $3, $4, $5)',
+        [word.id, idx, text, translation, noteRu],
       );
     }
     await client.query('COMMIT');
