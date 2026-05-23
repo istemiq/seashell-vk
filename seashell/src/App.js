@@ -4,7 +4,17 @@
  */
 import { useState, useEffect } from 'react';
 import bridge from '@vkontakte/vk-bridge';
-import { View, SplitLayout, SplitCol, ScreenSpinner } from '@vkontakte/vkui';
+import {
+  View,
+  SplitLayout,
+  SplitCol,
+  ScreenSpinner,
+  Panel,
+  PanelHeader,
+  Group,
+  Placeholder,
+  Text,
+} from '@vkontakte/vkui';
 import { useActiveVkuiLocation } from '@vkontakte/vk-mini-apps-router';
 
 import { SplitModalSlotContext } from './context/SplitModalSlotContext.js';
@@ -16,6 +26,35 @@ import { getVkUserIdFromLocation } from './utils/vkUserId.js';
 
 const BRIDGE_USER_INFO_MS = 8000;
 const DEV_FALLBACK_VK_USER_ID = Number(import.meta.env.VITE_DEV_VK_USER_ID) || 1000001;
+
+/** Экран «недоступно» только если явно включили при сборке: VITE_SHOW_MAINTENANCE=1 */
+const showMaintenanceRaw = String(import.meta.env.VITE_SHOW_MAINTENANCE ?? '')
+  .trim()
+  .toLowerCase();
+const showMaintenanceForUsers =
+  showMaintenanceRaw === '1' || showMaintenanceRaw === 'true' || showMaintenanceRaw === 'yes';
+
+function MaintenanceScreen() {
+  return (
+    <Panel id="maintenance">
+      <PanelHeader>Seashell</PanelHeader>
+      <Group>
+        <Placeholder>
+          <Text weight="2" style={{ marginBottom: 12 }}>
+            Сервис временно недоступен
+          </Text>
+          <Text style={{ lineHeight: 1.55 }}>
+            Сейчас мы обновляем Seashell. Словарь и разговорная практика временно не работают — новые
+            слова добавить не получится.
+          </Text>
+          <Text style={{ lineHeight: 1.55, marginTop: 12 }}>
+            Загляните снова через пару дней. Спасибо за понимание!
+          </Text>
+        </Placeholder>
+      </Group>
+    </Panel>
+  );
+}
 
 export const App = () => {
   const { panel: activePanel = DEFAULT_VIEW_PANELS.HOME } = useActiveVkuiLocation();
@@ -52,14 +91,18 @@ export const App = () => {
        */}
       <SplitLayout>
         <SplitCol>
-          <View activePanel={activePanel}>
-            <Home id="home" fetchedUser={fetchedUser} />
-            <Persik id="persik" />
-            <Dictionary id="dictionary" />
-            <Practice id="practice" />
-            <Readme id="readme" />
-            <Settings id="settings" />
-          </View>
+          {showMaintenanceForUsers ? (
+            <MaintenanceScreen />
+          ) : (
+            <View activePanel={activePanel}>
+              <Home id="home" fetchedUser={fetchedUser} />
+              <Persik id="persik" />
+              <Dictionary id="dictionary" />
+              <Practice id="practice" />
+              <Readme id="readme" />
+              <Settings id="settings" />
+            </View>
+          )}
         </SplitCol>
         {popout}
       </SplitLayout>

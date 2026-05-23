@@ -48,6 +48,16 @@ function allowedOrigins() {
 const ORIGINS = allowedOrigins();
 const isProd = String(process.env.NODE_ENV ?? '').toLowerCase() === 'production';
 
+/** VK Mini Apps static hosting (prod/stage *.pages*.vk-apps.com). */
+function isVkAppsHostingOrigin(origin) {
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    return host === 'vk-apps.com' || host.endsWith('.vk-apps.com');
+  } catch {
+    return false;
+  }
+}
+
 app.use(
   cors({
     origin(origin, cb) {
@@ -57,7 +67,9 @@ app.use(
       if (!isProd && !ORIGINS) return cb(null, true);
       // prod default: allow none unless configured
       if (isProd && !ORIGINS) return cb(new Error('CORS blocked'), false);
-      return cb(null, ORIGINS.includes(origin));
+      if (ORIGINS.includes(origin)) return cb(null, true);
+      if (isVkAppsHostingOrigin(origin)) return cb(null, true);
+      return cb(new Error('CORS blocked'), false);
     },
     credentials: false,
   }),
