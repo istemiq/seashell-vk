@@ -3,7 +3,13 @@
  * Подключение: переменная окружения DATABASE_URL.
  */
 import pg from 'pg';
-import { englishLineFromItem, russianLineFromItem, stylisticNoteFromItem } from './exampleFields.js';
+import {
+  englishLineFromItem,
+  russianLineFromItem,
+  stylisticNoteFromItem,
+  normalizeVerbUsage,
+} from './exampleFields.js';
+import { WORD_EXAMPLE_COUNT } from './dictionaryConstants.js';
 
 const { Pool } = pg;
 
@@ -66,12 +72,31 @@ export async function initDb() {
 
   await pool.query(`ALTER TABLE words ADD COLUMN IF NOT EXISTS gloss_note_ru TEXT`);
   await pool.query(`ALTER TABLE examples ADD COLUMN IF NOT EXISTS note_ru TEXT`);
+  await pool.query(`ALTER TABLE words ADD COLUMN IF NOT EXISTS verb_usage TEXT`);
+
+  await pool.query('DELETE FROM examples WHERE idx >= $1', [WORD_EXAMPLE_COUNT]);
+}
+
+function parseVerbUsageColumn(raw) {
+  if (raw == null || raw === '') return [];
+  if (Array.isArray(raw)) return raw;
+  try {
+    const parsed = JSON.parse(String(raw));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function serializeVerbUsage(verbUsage) {
+  const normalized = normalizeVerbUsage(verbUsage);
+  return normalized.length === 3 ? JSON.stringify(normalized) : null;
 }
 
 /** Разбор ответа GigaChat: либо массив примеров, либо объект { glossRu, examples }. */
 function unpackWordPayload(payload) {
   if (Array.isArray(payload)) {
-    return { glossRu: null, glossNoteRu: null, examples: payload };
+    return { glossRu: null, glossNoteRu: null, examples: payload, verbUsage: [] };
   }
   if (payload && typeof payload === 'object') {
     const g = payload.glossRu ?? payload.gloss_ru;
@@ -79,18 +104,26 @@ function unpackWordPayload(payload) {
     const gn = payload.glossNoteRu ?? payload.gloss_note_ru;
     const glossNoteRu = typeof gn === 'string' ? gn.trim() || null : null;
     const examples = payload.examples ?? [];
-    return { glossRu, glossNoteRu, examples: Array.isArray(examples) ? examples : [] };
+    const verbUsage = normalizeVerbUsage(
+      payload.verbUsage ?? payload.verb_usage ?? payload.verbForms ?? [],
+    );
+    return {
+      glossRu,
+      glossNoteRu,
+      examples: Array.isArray(examples) ? examples : [],
+      verbUsage,
+    };
   }
-  return { glossRu: null, glossNoteRu: null, examples: [] };
+  return { glossRu: null, glossNoteRu: null, examples: [], verbUsage: [] };
 }
 
 export async function listWords(vkUserId) {
   const { rows } = await pool.query(
     `SELECT w.id, w.word, w.created_at,
-      (SELECT COUNT(*)::int FROM examples e WHERE e.word_id = w.id) AS example_count
+      (SELECT COUNT(*)::int FROM examples e WHERE e.word_id = w.id AND e.idx < $2) AS example_count
      FROM words w WHERE w.vk_user_id = $1
      ORDER BY w.created_at DESC`,
-    [vkUserId],
+    [vkUserId, WORD_EXAMPLE_COUNT],
   );
   return rows.map((r) => ({
     ...r,
@@ -101,13 +134,13 @@ export async function listWords(vkUserId) {
 export async function listWordsInSet(vkUserId, setId) {
   const { rows } = await pool.query(
     `SELECT w.id, w.word, w.created_at,
-      (SELECT COUNT(*)::int FROM examples e WHERE e.word_id = w.id) AS example_count
+      (SELECT COUNT(*)::int FROM examples e WHERE e.word_id = w.id AND e.idx < $3) AS example_count
      FROM words w
      JOIN word_set_items wsi ON wsi.word_id = w.id
      JOIN word_sets s ON s.id = wsi.set_id AND s.vk_user_id = $1
      WHERE w.vk_user_id = $1 AND wsi.set_id = $2
      ORDER BY w.created_at DESC`,
-    [vkUserId, setId],
+    [vkUserId, setId, WORD_EXAMPLE_COUNT],
   );
   return rows.map((r) => ({
     ...r,
@@ -117,14 +150,14 @@ export async function listWordsInSet(vkUserId, setId) {
 
 export async function getWordWithExamples(vkUserId, wordId) {
   const { rows: wRows } = await pool.query(
-    'SELECT id, word, created_at, gloss_ru, gloss_note_ru FROM words WHERE id = $1 AND vk_user_id = $2',
+    'SELECT id, word, created_at, gloss_ru, gloss_note_ru, verb_usage FROM words WHERE id = $1 AND vk_user_id = $2',
     [wordId, vkUserId],
   );
   const word = wRows[0];
   if (!word) return null;
   const { rows: examples } = await pool.query(
-    'SELECT idx, text, translation, note_ru FROM examples WHERE word_id = $1 ORDER BY idx ASC',
-    [word.id],
+    'SELECT idx, text, translation, note_ru FROM examples WHERE word_id = $1 ORDER BY idx ASC LIMIT $2',
+    [word.id, WORD_EXAMPLE_COUNT],
   );
   const { rows: setRows } = await pool.query(
     `SELECT wsi.set_id
@@ -135,18 +168,21 @@ export async function getWordWithExamples(vkUserId, wordId) {
     [word.id, vkUserId],
   );
   const setIds = setRows.map((r) => Number(r.set_id));
-  return { ...word, examples, setIds };
+  const verb_usage = parseVerbUsageColumn(word.verb_usage);
+  return { ...word, examples, setIds, verb_usage };
 }
 
 export async function insertWordWithExamples(vkUserId, wordNorm, payload) {
-  const { glossRu, glossNoteRu, examples: examplesIn } = unpackWordPayload(payload);
+  const { glossRu, glossNoteRu, examples: examplesInRaw, verbUsage } = unpackWordPayload(payload);
+  const examplesIn = examplesInRaw.slice(0, WORD_EXAMPLE_COUNT);
+  const verbUsageJson = serializeVerbUsage(verbUsage);
   const createdAt = Date.now();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const ins = await client.query(
-      'INSERT INTO words (vk_user_id, word, created_at, gloss_ru, gloss_note_ru) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-      [vkUserId, wordNorm, createdAt, glossRu, glossNoteRu],
+      'INSERT INTO words (vk_user_id, word, created_at, gloss_ru, gloss_note_ru, verb_usage) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+      [vkUserId, wordNorm, createdAt, glossRu, glossNoteRu, verbUsageJson],
     );
     const wordId = Number(ins.rows[0].id);
     for (let idx = 0; idx < examplesIn.length; idx++) {
@@ -172,7 +208,9 @@ export async function insertWordWithExamples(vkUserId, wordNorm, payload) {
 
 /** Удаляет все примеры слова и записывает новый набор (тот же payload, что у insertWordWithExamples). */
 export async function replaceExamplesForWord(vkUserId, wordId, payload) {
-  const { glossRu, glossNoteRu, examples: examplesIn } = unpackWordPayload(payload);
+  const { glossRu, glossNoteRu, examples: examplesInRaw, verbUsage } = unpackWordPayload(payload);
+  const examplesIn = examplesInRaw.slice(0, WORD_EXAMPLE_COUNT);
+  const verbUsageJson = serializeVerbUsage(verbUsage);
   const { rows } = await pool.query('SELECT id FROM words WHERE id = $1 AND vk_user_id = $2', [
     wordId,
     vkUserId,
@@ -197,6 +235,11 @@ export async function replaceExamplesForWord(vkUserId, wordId, payload) {
         vkUserId,
       ]);
     }
+    await client.query('UPDATE words SET verb_usage = $1 WHERE id = $2 AND vk_user_id = $3', [
+      verbUsageJson,
+      word.id,
+      vkUserId,
+    ]);
     await client.query('DELETE FROM examples WHERE word_id = $1', [word.id]);
     for (let idx = 0; idx < examplesIn.length; idx++) {
       const ex = examplesIn[idx];

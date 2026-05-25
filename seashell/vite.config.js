@@ -2,7 +2,7 @@
  * Конфигурация Vite: React, прокси /api → localhost:3001 (Express), legacy-бандл при необходимости.
  * Подробности по пакетам — в DEPENDENCIES.md в корне seashell.
  */
-import { defineConfig, transformWithEsbuild } from 'vite';
+import { defineConfig, loadEnv, transformWithEsbuild } from 'vite';
 import react from '@vitejs/plugin-react';
 import legacy from '@vitejs/plugin-legacy';
 
@@ -39,7 +39,17 @@ function threatJsFilesAsJsx() {
  * This is done so that your code runs equally well on the site and in the odr.
  * The details are here: https://dev.vk.ru/mini-apps/development/on-demand-resources.
  */
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  if (mode === 'production') {
+    const env = loadEnv(mode, process.cwd(), '');
+    if (!String(env.VITE_API_URL ?? '').trim()) {
+      throw new Error(
+        'Для npm run build / deploy нужен VITE_API_URL в seashell/.env.production (например https://api.sishel.ru)',
+      );
+    }
+  }
+
+  return {
   base: './',
 
   server: {
@@ -78,4 +88,5 @@ export default defineConfig({
   build: {
     outDir: 'build',
   },
+};
 });

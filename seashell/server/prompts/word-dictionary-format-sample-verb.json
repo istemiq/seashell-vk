@@ -1,0 +1,63 @@
+{
+  "headwordEn": "go",
+  "glossRu": "go — идти, ехать; отправляться; нейтр.; BrE/AmE",
+  "verbUsage": [
+    {
+      "label": "наст. (go)",
+      "text": "I go to work by bus.",
+      "translation": "Я езжу на работу на автобусе. — нейтр.; BrE/AmE"
+    },
+    {
+      "label": "прош. (went)",
+      "text": "She went home early yesterday.",
+      "translation": "Вчера она рано ушла домой. — нейтр.; BrE/AmE"
+    },
+    {
+      "label": "прич. (gone)",
+      "text": "He has gone abroad for a month.",
+      "translation": "Он уехал за границу на месяц. — нейтр.; BrE/AmE"
+    }
+  ],
+  "examples": [
+    {
+      "text": "Let's go before it rains.",
+      "translation": "Пойдём, пока не пошёл дождь. — разг.; BrE/AmE"
+    },
+    {
+      "text": "Where did you go last weekend?",
+      "translation": "Куда ты ходил в прошлые выходные? — нейтр.; BrE/AmE"
+    },
+    {
+      "text": "The milk has gone bad.",
+      "translation": "Молоко испортилось. — разг.; BrE/AmE"
+    },
+    {
+      "text": "Time goes quickly.",
+      "translation": "Время летит быстро. — нейтр.; BrE/AmE"
+    },
+    {
+      "text": "We need to go now.",
+      "translation": "Нам нужно идти сейчас. — нейтр.; BrE/AmE"
+    },
+    {
+      "text": "She went quiet when he arrived.",
+      "translation": "Она замолчала, когда он пришёл. — нейтр.; BrE/AmE"
+    },
+    {
+      "text": "He's gone to pick up the kids.",
+      "translation": "Он поехал за детьми. — нейтр.; BrE/AmE"
+    },
+    {
+      "text": "How's it going?",
+      "translation": "Как дела? — разг.; BrE/AmE"
+    },
+    {
+      "text": "Don't go there alone at night.",
+      "translation": "Не ходи туда один ночью. — нейтр.; BrE/AmE"
+    },
+    {
+      "text": "Everything went well, thanks.",
+      "translation": "Всё прошло хорошо, спасибо. — нейтр.; BrE/AmE"
+    }
+  ]
+}

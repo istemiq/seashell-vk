@@ -91,7 +91,12 @@ function messageFromStatusAndBody(status, text) {
   }
   try {
     const j = JSON.parse(raw);
-    if (j?.error && typeof j.error === 'string') return j.error;
+    if (j?.error && typeof j.error === 'string') {
+      if (status === 401 && /launch params/i.test(j.error)) {
+        return `${j.error} Закрой мини-приложение и открой снова из VK (не по прямой ссылке на pages.vk-apps.com).`;
+      }
+      return j.error;
+    }
   } catch {
     // не JSON
   }

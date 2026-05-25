@@ -144,7 +144,10 @@ export const Dictionary = ({ id }) => {
   }, []);
 
   const loadList = useCallback(async () => {
-    if (!vkUserId) return;
+    if (!vkUserId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     setTtsOpenOffer(false);
@@ -292,6 +295,9 @@ export const Dictionary = ({ id }) => {
   const currentExampleRu = lineFromExampleField(ex?.translation);
   // Старые карточки с колонкой note_ru — показываем второй строкой.
   const legacyExampleNoteRu = lineFromExampleField(ex?.note_ru);
+
+  const verbUsageRows = Array.isArray(detail?.verb_usage) ? detail.verb_usage : [];
+  const showVerbUsage = verbUsageRows.length === 3;
 
   const headerTitle = selectedId != null ? (detail?.word || '…') : 'Словарь';
   const activeSetName =
@@ -756,7 +762,7 @@ export const Dictionary = ({ id }) => {
               <Footnote style={{ marginTop: 8 }}>
                 {screen === 'group'
                   ? 'Слово добавится в эту группу. Можно ввести по-русски — в словарь запишем естественный английский эквивалент, примеры и переводы с пометками стиля (нейтр., разг., BrE и т.д.).'
-                  : 'Можно ввести по-русски — в словарь запишем естественный английский эквивалент. Подберём примеры и переводы; в скобках — стиль и BrE/AmE, где важно. «Другой пример» переключает карточки.'}
+                  : 'Можно ввести по-русски — в словарь запишем естественный английский эквивалент. Подберём примеры и переводы; в конце строки перевода — пометки стиля и BrE/AmE, как в эталоне. «Другой пример» переключает карточки.'}
               </Footnote>
             </FormItem>
             </Group>
@@ -772,6 +778,12 @@ export const Dictionary = ({ id }) => {
               {!loading && words.length === 0 && (
                 <Box>
                   <Text>Пока пусто — добавь первое слово выше.</Text>
+                  {!error && (
+                    <Footnote style={{ marginTop: 10, lineHeight: 1.5, opacity: 0.88 }}>
+                      Если слова были раньше на другом сервере — в новой базе API их нет; добавь заново или
+                      восстанови дамп PostgreSQL на хостинге.
+                    </Footnote>
+                  )}
                 </Box>
               )}
               {!loading &&
@@ -854,6 +866,28 @@ export const Dictionary = ({ id }) => {
                   <Footnote style={{ marginTop: 10, lineHeight: 1.5, opacity: 0.95 }}>
                     Доп. к головному значению (старая карточка): {lineFromExampleField(detail.gloss_note_ru)}
                   </Footnote>
+                ) : null}
+                {showVerbUsage ? (
+                  <>
+                    <Separator style={{ margin: '12px 0' }} />
+                    <Text weight="2">Три формы глагола</Text>
+                    {verbUsageRows.map((row, i) => {
+                      const label = lineFromExampleField(row?.label) || `Форма ${i + 1}`;
+                      const en = lineFromExampleField(row?.text);
+                      const ru = lineFromExampleField(row?.translation);
+                      return (
+                        <Box key={`verb-usage-${i}`} style={{ marginTop: i === 0 ? 10 : 14 }}>
+                          <Footnote style={{ lineHeight: 1.4, opacity: 0.92 }}>{label}</Footnote>
+                          {en ? (
+                            <Text style={{ marginTop: 6, lineHeight: 1.45 }}>{en}</Text>
+                          ) : null}
+                          {ru ? (
+                            <Text style={{ marginTop: 6, lineHeight: 1.45, opacity: 0.88 }}>{ru}</Text>
+                          ) : null}
+                        </Box>
+                      );
+                    })}
+                  </>
                 ) : null}
                 <Separator style={{ margin: '12px 0' }} />
                 <Text weight="2">Пример {exampleIdx + 1} из {detail.examples.length}</Text>

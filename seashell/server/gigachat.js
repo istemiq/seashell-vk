@@ -14,9 +14,12 @@ import {
   russianLineFromItem,
   stylisticNoteFromItem,
   splitTranslationTail,
+  normalizeVerbUsage,
 } from './exampleFields.js';
+import { WORD_EXAMPLE_COUNT } from './dictionaryConstants.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROMPTS_DIR = path.join(__dirname, 'prompts');
 
 const OAUTH_URL = 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth';
 const CHAT_URL = 'https://gigachat.devices.sberbank.ru/api/v1/chat/completions';
@@ -121,26 +124,64 @@ async function getAccessToken() {
   return accessToken;
 }
 
-function loadPromptTemplate() {
-  const p = path.join(__dirname, 'prompts', 'word-examples.txt');
-  return fs.readFileSync(p, 'utf8');
+/**
+ * Словарный промпт читается с диска на каждый запрос (без in-memory кэша),
+ * чтобы правки в `prompts/*` применялись без перезапуска процесса.
+ */
+function getWordDictionaryUserPromptParts() {
+  return {
+    template: fs.readFileSync(path.join(PROMPTS_DIR, 'word-examples.txt'), 'utf8'),
+    formatSample: fs.readFileSync(
+      path.join(PROMPTS_DIR, 'word-dictionary-format-sample.json'),
+      'utf8',
+    ),
+    formatSampleVerb: fs.readFileSync(
+      path.join(PROMPTS_DIR, 'word-dictionary-format-sample-verb.json'),
+      'utf8',
+    ),
+  };
+}
+
+/** System-роль GigaChat для словаря: `prompts/word-dictionary-system.txt`. */
+function buildDictionarySystemContent() {
+  const raw = fs.readFileSync(path.join(PROMPTS_DIR, 'word-dictionary-system.txt'), 'utf8');
+  return String(raw)
+    .trim()
+    .replaceAll('{{WORD_EXAMPLE_COUNT}}', String(WORD_EXAMPLE_COUNT));
 }
 
 function fillPrompt(userInput) {
   const w = String(userInput).trim();
-  return loadPromptTemplate().replaceAll('{{INPUT}}', w).replaceAll('{{WORD}}', w);
+  const { template, formatSample, formatSampleVerb } = getWordDictionaryUserPromptParts();
+  return template
+    .replaceAll('{{INPUT}}', w)
+    .replaceAll('{{WORD}}', w)
+    .replaceAll('{{WORD_EXAMPLE_COUNT}}', String(WORD_EXAMPLE_COUNT))
+    .replaceAll('{{FORMAT_SAMPLE}}', formatSample.trim())
+    .replaceAll('{{FORMAT_SAMPLE_VERB}}', formatSampleVerb.trim());
 }
 
-/** Краткое system-сообщение: формат JSON и стилистика в той же строке (без серверного regex). */
-const DICTIONARY_SYSTEM_EXTRA = `Dictionary JSON only: no markdown, no code fences, one JSON object only.
-
-Fields: "headwordEn", "glossRu", "examples" (exactly 15 objects). Each example: "text" (English), "translation" (Russian).
-
-The "text" field must be English only (Latin letters for the sentence). The "translation" field must be the Russian rendering of that same English sentence, not a second unrelated Russian sentence.
-
-CRITICAL: Every non-empty "glossRu" and every "translation" must be ONE Russian line that includes BOTH (1) register/style words in Russian (e.g. нейтр., разг., форм.) AND (2) English variety markers BrE and/or AmE and/or AuE or explicit нейтр./BrE/AmE in the same line. Never output bare translations without these tags. Do not use extra JSON keys for notes.
-
-If the learner's entry contains Cyrillic: this is an English-learning app — glossRu must visibly include the same English headword (Latin letters) as headwordEn (e.g. "lean — худой…"), not a Russian-only monolingual definition.`;
+/** При старте API: пути и размеры файлов словарного промпта. */
+export function logDictionaryPromptStartupInfo() {
+  const dir = path.resolve(PROMPTS_DIR);
+  const files = [
+    'word-examples.txt',
+    'word-dictionary-format-sample.json',
+    'word-dictionary-format-sample-verb.json',
+    'word-dictionary-system.txt',
+  ];
+  console.log(`[seashell] dictionary prompts dir: ${dir}`);
+  for (const name of files) {
+    const p = path.join(PROMPTS_DIR, name);
+    try {
+      const st = fs.statSync(p);
+      console.log(`[seashell]   ${name}: ${st.size} bytes, mtime=${st.mtime.toISOString()}`);
+    } catch {
+      console.warn(`[seashell]   ${name}: MISSING`);
+    }
+  }
+  console.log(`[seashell] word example limit: ${WORD_EXAMPLE_COUNT}`);
+}
 
 /** True if строка в основном латиница (англ. ввод без headwordEn из модели — допустимый fallback). */
 function looksMostlyEnglish(s) {
@@ -242,11 +283,15 @@ function parseObjectPayload(parsed) {
     throw new Error('Expected examples array in JSON object');
   }
   const headwordEn = pickHeadwordEnFromParsed(parsed);
+  const verbUsage = normalizeVerbUsage(
+    parsed.verbUsage ?? parsed.verb_usage ?? parsed.verbForms ?? parsed.verb_forms,
+  );
   return {
     glossRu: glossRu || '',
     glossNoteRu: '',
     examples: normalizeExamples(arr),
     headwordEn,
+    verbUsage,
   };
 }
 
@@ -256,7 +301,13 @@ function extractGenerationPayload(text) {
   try {
     const parsed = JSON.parse(t);
     if (Array.isArray(parsed)) {
-      return { glossRu: '', glossNoteRu: '', examples: normalizeExamples(parsed), headwordEn: '' };
+      return {
+        glossRu: '',
+        glossNoteRu: '',
+        examples: normalizeExamples(parsed),
+        headwordEn: '',
+        verbUsage: [],
+      };
     }
     if (parsed && typeof parsed === 'object') {
       try {
@@ -281,7 +332,13 @@ function extractGenerationPayload(text) {
     }
   }
   const arr = extractJsonArray(text);
-  return { glossRu: '', glossNoteRu: '', examples: normalizeExamples(arr), headwordEn: '' };
+  return {
+    glossRu: '',
+    glossNoteRu: '',
+    examples: normalizeExamples(arr),
+    headwordEn: '',
+    verbUsage: [],
+  };
 }
 
 /** Нормализует ответ модели к { text, translation, noteRu }[]; пометки только в translation, noteRu пустой. */
@@ -345,16 +402,11 @@ async function gigaChatWordExamplesCompletion(userContent, model, token, tempera
       body: JSON.stringify({
         model,
         messages: [
-          {
-            role: 'system',
-            content:
-              'You output only one valid JSON object when asked. No markdown fences. Follow the user format exactly.\n\n' +
-              DICTIONARY_SYSTEM_EXTRA,
-          },
+          { role: 'system', content: buildDictionarySystemContent() },
           { role: 'user', content: userContent },
         ],
         temperature,
-        max_tokens: 5200,
+        max_tokens: 4000,
       }),
     });
   } catch (e) {
@@ -402,10 +454,10 @@ export async function generateWordExamples(word) {
       `Ответ GigaChat не разобрался как JSON (${msg}). Частые причины: в ответе есть markdown вместо чистого JSON, обрезан длинный ответ, или ошибка в структуре. Попробуй ещё раз.`,
     );
   }
-  const { glossRu, examples, headwordEn: headFromPayload } = payload;
+  const { glossRu, examples, headwordEn: headFromPayload, verbUsage } = payload;
 
-  if (examples.length < 15) {
-    throw new Error(`Expected 15 examples, got ${examples.length}`);
+  if (examples.length < WORD_EXAMPLE_COUNT) {
+    throw new Error(`Expected ${WORD_EXAMPLE_COUNT} examples, got ${examples.length}`);
   }
 
   const g = sanitizeGlossRu(glossRu);
@@ -420,7 +472,7 @@ export async function generateWordExamples(word) {
     }
   }
 
-  const trimmed = examples.slice(0, 15);
+  const trimmed = examples.slice(0, WORD_EXAMPLE_COUNT);
 
   const glossOut = ensureGlossRuShowsEnglishLemma(word, headwordEn, g);
 
@@ -429,6 +481,7 @@ export async function generateWordExamples(word) {
     glossNoteRu: null,
     examples: trimmed,
     headwordEn,
+    verbUsage: Array.isArray(verbUsage) && verbUsage.length === 3 ? verbUsage : [],
   };
 }
 

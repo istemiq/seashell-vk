@@ -8,6 +8,7 @@ import express from 'express';
 import cors from 'cors';
 import { verifyVkLaunchParams } from './vkSignature.js';
 import { assertAllowedUserContent } from './contentPolicy.js';
+import { WORD_EXAMPLE_COUNT } from './dictionaryConstants.js';
 import {
   initDb,
   listWords,
@@ -23,7 +24,12 @@ import {
   deleteSetAndOrphanWords,
   replaceWordSets,
 } from './db.js';
-import { generateWordExamples, generatePracticeTurn, tlsInsecure } from './gigachat.js';
+import {
+  generateWordExamples,
+  generatePracticeTurn,
+  tlsInsecure,
+  logDictionaryPromptStartupInfo,
+} from './gigachat.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -77,7 +83,7 @@ app.use(
 app.use(express.json({ limit: '256kb' }));
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, wordExampleLimit: WORD_EXAMPLE_COUNT });
 });
 
 function makeRateLimiter({ windowMs, max, keyFn }) {
@@ -374,6 +380,7 @@ app.delete('/api/words/:id', async (req, res) => {
 
 async function start() {
   await initDb();
+  logDictionaryPromptStartupInfo();
   if (
     String(process.env.NODE_ENV ?? '').toLowerCase() === 'production' &&
     !String(process.env.VK_APP_SECRET ?? '').trim()
