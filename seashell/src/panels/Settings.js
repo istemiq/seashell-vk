@@ -1,4 +1,14 @@
-import { Panel, PanelHeader, PanelHeaderBack, Group, Header, FormItem, Switch, Slider } from '@vkontakte/vkui';
+import {
+  Panel,
+  PanelHeader,
+  PanelHeaderBack,
+  Group,
+  Header,
+  FormItem,
+  Switch,
+  Slider,
+  Select,
+} from '@vkontakte/vkui';
 import PropTypes from 'prop-types';
 import { useMemo, useState } from 'react';
 
@@ -22,6 +32,17 @@ export const Settings = ({ id }) => {
       <Group header={<Header mode="secondary">Озвучка</Header>}>
         <FormItem top="Включить озвучку (TTS)">
           <Switch checked={!!s.ttsEnabled} onChange={(e) => setAndPersist({ ttsEnabled: e.target.checked })} />
+        </FormItem>
+        <FormItem top="Акцент">
+          <Select
+            value={String(s.ttsLocale || 'en-US')}
+            options={[
+              { label: 'Американский (en-US)', value: 'en-US' },
+              { label: 'Британский (en-GB)', value: 'en-GB' },
+            ]}
+            onChange={(e) => setAndPersist({ ttsLocale: e.target.value })}
+            disabled={!s.ttsEnabled}
+          />
         </FormItem>
         <FormItem top={`Скорость озвучки: ${Number(s.ttsRate).toFixed(2)}`}>
           <Slider

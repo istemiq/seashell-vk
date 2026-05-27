@@ -53,7 +53,7 @@ async function tryWebSpeech(text) {
     await ensureVoicesLoaded();
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-US';
+    u.lang = String(s.ttsLocale || 'en-US');
     u.rate = Number(s.ttsRate) || 0.95;
     const voice = pickEnglishVoice();
     if (voice) u.voice = voice;
@@ -106,7 +106,8 @@ async function tryBackendTts(text) {
   const s = loadSettings();
   if (!s.ttsEnabled) return false;
   try {
-    const r = await postTtsSpeak({ text, locale: 'en-US', rate: Number(s.ttsRate) || 0.95 });
+    const locale = String(s.ttsLocale || 'en-US');
+    const r = await postTtsSpeak({ text, locale, rate: Number(s.ttsRate) || 0.95 });
     return await playUrl(r.url);
   } catch {
     return false;
