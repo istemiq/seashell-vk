@@ -30,6 +30,7 @@ import {
   tlsInsecure,
   logDictionaryPromptStartupInfo,
 } from './gigachat.js';
+import { registerTts } from './tts.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -121,6 +122,10 @@ function vkLaunchParamsFromHeader(req) {
   const s = h != null ? String(h).trim() : '';
   return s || null;
 }
+
+// --- Public static: TTS mp3 cache (/tts/v1/...) ---
+// Must be registered before auth middleware: mp3 files are fetched by VK native player without headers.
+registerTts(app, { makeRateLimiter });
 
 // Маршруты ниже (всё после этого app.use) требуют заголовок X-VK-User-Id. /api/health объявлен выше — без авторизации.
 app.use((req, res, next) => {
