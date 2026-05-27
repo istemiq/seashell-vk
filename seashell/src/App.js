@@ -8,7 +8,6 @@ import {
   View,
   SplitLayout,
   SplitCol,
-  ScreenSpinner,
   Panel,
   PanelHeader,
   Group,
@@ -17,6 +16,7 @@ import {
 } from '@vkontakte/vkui';
 import { useActiveVkuiLocation } from '@vkontakte/vk-mini-apps-router';
 
+import { SeashellScreenSpinner } from './components/SeashellScreenSpinner.js';
 import { SplitModalSlotContext } from './context/SplitModalSlotContext.js';
 import { Persik, Home, Dictionary, Practice, Readme, Settings } from './panels';
 import { DEFAULT_VIEW_PANELS } from './routes';
@@ -59,7 +59,7 @@ function MaintenanceScreen() {
 export const App = () => {
   const { panel: activePanel = DEFAULT_VIEW_PANELS.HOME } = useActiveVkuiLocation();
   const [fetchedUser, setUser] = useState();
-  const [popout, setPopout] = useState(<ScreenSpinner />);
+  const [popout, setPopout] = useState(<SeashellScreenSpinner />);
   const [splitModalMountEl, setSplitModalMountEl] = useState(null);
 
   useEffect(() => {

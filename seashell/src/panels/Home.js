@@ -1,10 +1,8 @@
-import { useMemo, useState } from 'react';
-import { Panel, PanelHeader, Header, Group, Cell, Avatar, Text, Button } from '@vkontakte/vkui';
+import { Panel, PanelHeader, Header, Group, Cell, Avatar } from '@vkontakte/vkui';
 import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import PropTypes from 'prop-types';
 
 import { SeashellBootlog } from '../components/SeashellBootlog';
-import { loadSettings, updateSettings } from '../utils/settings.js';
 
 /** Короткие тезисы (EN): естественные формулировки для носителя */
 const HOME_TAGLINES_EN = [
@@ -20,9 +18,6 @@ export const Home = ({ id, fetchedUser }) => {
   const userDisplayName = fetchedUser
     ? [first_name, last_name].filter(Boolean).join(' ').trim()
     : '';
-
-  const initialSettings = useMemo(() => loadSettings(), []);
-  const [onboarded, setOnboarded] = useState(!!initialSettings.onboarded);
 
   return (
     <Panel id={id}>
@@ -45,27 +40,6 @@ export const Home = ({ id, fetchedUser }) => {
         <SeashellBootlog userDisplayName={userDisplayName} />
       </Group>
 
-      {!onboarded && (
-        <Group header={<Header size="s">Как пользоваться</Header>}>
-          <Text style={{ lineHeight: 1.55 }}>
-            • Словарь: добавь слово или фразу — получишь краткое значение и примеры.
-            <br />
-            • Практика: напиши или продиктуй фразу — собеседник ответит и при необходимости подскажет правку.
-          </Text>
-          <Button
-            size="m"
-            stretched
-            mode="secondary"
-            style={{ marginTop: 12 }}
-            onClick={() => {
-              updateSettings({ onboarded: true });
-              setOnboarded(true);
-            }}
-          >
-            Понятно
-          </Button>
-        </Group>
-      )}
       {fetchedUser && (
         <Group header={<Header size="s">Профиль</Header>}>
           <Cell before={photo_200 && <Avatar src={photo_200} />} subtitle={city?.title}>

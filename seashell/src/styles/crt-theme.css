@@ -335,6 +335,54 @@ html.vkui {
   background: rgba(8, 11, 16, 0.88) !important;
 }
 
+/* Полноэкранная загрузка: seashell + серебряный перелив */
+.seashell-screen-spinner {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 11, 16, 0.88);
+  pointer-events: all;
+}
+
+.seashell-shimmer {
+  font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+  font-size: clamp(2rem, 12vw, 3.2rem);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  background: linear-gradient(
+    90deg,
+    rgba(170, 180, 195, 0.35) 0%,
+    rgba(230, 240, 255, 0.9) 35%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(200, 210, 225, 0.6) 70%,
+    rgba(150, 160, 175, 0.3) 100%
+  );
+  background-size: 250% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: seashell-shimmer-sweep 2.2s linear infinite;
+  white-space: pre;
+}
+
+.seashell-shimmer--static {
+  animation: none;
+  color: var(--crt-fg);
+  background: none;
+}
+
+@keyframes seashell-shimmer-sweep {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
 .seashell-crt .vkuiPlaceholder {
   color: var(--crt-fg-dim) !important;
 }
