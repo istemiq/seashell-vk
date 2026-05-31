@@ -22,18 +22,16 @@ import {
   Separator,
   Spinner,
   Snackbar,
-  Link,
 } from '@vkontakte/vkui';
 import PropTypes from 'prop-types';
 
-import { setVkUserIdFallback } from '../api/dictionaryApi.js';
+import { resolveVkUserId, setVkUserIdFallback } from '../api/dictionaryApi.js';
 import { addWord as addWordToDictionary } from '../api/dictionaryApi.js';
 import * as practiceApi from '../api/practiceApi.js';
 import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
 import { withTimeout } from '../utils/withTimeout.js';
 import { loadSettings } from '../utils/settings.js';
 import { speakEnglish } from '../utils/tts.js';
-import { copyUrlToClipboard, openInBrowser } from '../utils/openInBrowser.js';
 import { useNavigateBackOrHome } from '../utils/useNavigateBackOrHome.js';
 
 const BRIDGE_GET_USER_MS = 8000;
@@ -53,20 +51,14 @@ export const Practice = ({ id }) => {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [snackbar, setSnackbar] = useState(null);
-  const [appHref, setAppHref] = useState('');
   const [listening, setListening] = useState(false);
   const recRef = useRef(null);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    setAppHref(window.location.href);
-  }, []);
 
   // Определяем vk_user_id для заголовка X-VK-User-Id (как в словаре).
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (getVkUserIdFromLocation()) {
+      if (resolveVkUserId()) {
         setVkReady(true);
         return;
       }
@@ -261,77 +253,6 @@ export const Practice = ({ id }) => {
 
       {vkReady && (
         <>
-          <Group>
-            <Footnote>
-              Во встроенном клиенте VK иногда не работает озвучка и воспроизведение медиа. Если не слышишь ответ —
-              открой полную версию приложения во внешнем браузере (кнопка ниже или ссылка).
-            </Footnote>
-            <Box style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              <Button
-                type="button"
-                size="m"
-                mode="secondary"
-                onClick={() => {
-                  void openInBrowser().then((r) => {
-                    if (!r?.ok) {
-                      const err = r?.error || 'Не удалось открыть';
-                      setNotice(err);
-                      setSnackbar(
-                        <Snackbar onClose={() => setSnackbar(null)} duration={4500}>
-                          {err}
-                        </Snackbar>,
-                      );
-                      return;
-                    }
-                    const hint =
-                      r.method === 'clipboard'
-                        ? 'Ссылка скопирована — вставь её во внешнем браузере, если окно не открылось.'
-                        : 'Если окно не открылось — нажми «Скопировать ссылку» или «Открыть как ссылку».';
-                    setSnackbar(
-                      <Snackbar onClose={() => setSnackbar(null)} duration={5000}>
-                        {hint}
-                      </Snackbar>,
-                    );
-                  });
-                }}
-              >
-                Открыть в браузере
-              </Button>
-              <Button
-                type="button"
-                size="m"
-                mode="tertiary"
-                onClick={() => {
-                  void (async () => {
-                    const r = await copyUrlToClipboard();
-                    if (!r?.ok) {
-                      const err = r?.error || 'Не удалось скопировать';
-                      setNotice(err);
-                      setSnackbar(
-                        <Snackbar onClose={() => setSnackbar(null)} duration={4500}>
-                          {err}
-                        </Snackbar>,
-                      );
-                      return;
-                    }
-                    setSnackbar(
-                      <Snackbar onClose={() => setSnackbar(null)} duration={3500}>
-                        Ссылка скопирована — вставь её во внешнем браузере.
-                      </Snackbar>,
-                    );
-                  })();
-                }}
-              >
-                Скопировать ссылку
-              </Button>
-              {appHref ? (
-                <Link href={appHref} target="_blank" rel="noopener noreferrer">
-                  Открыть как ссылку
-                </Link>
-              ) : null}
-            </Box>
-          </Group>
-
           <Group header={<Header mode="secondary">Диалог</Header>}>
             {turns.length === 0 && (
               <Box>

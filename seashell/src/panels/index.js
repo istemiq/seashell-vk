@@ -4,3 +4,4 @@ export { Dictionary } from './Dictionary';
 export { Practice } from './Practice';
 export { Readme } from './Readme';
 export { Settings } from './Settings';
+export { Privacy } from './Privacy';

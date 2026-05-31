@@ -5,7 +5,8 @@ import {
   SizeType,
 } from '@vkontakte/vkui';
 
-export const transformVKBridgeAdaptivity = ({ type, viewportWidth, viewportHeight }) => {
+export const transformVKBridgeAdaptivity = (payload) => {
+  const { type, viewportWidth, viewportHeight } = payload || {};
   switch (type) {
     case 'adaptive':
       return {

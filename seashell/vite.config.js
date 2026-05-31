@@ -1,6 +1,5 @@
 /**
- * Конфигурация Vite: React, прокси /api → localhost:3001 (Express), legacy-бандл при необходимости.
- * Подробности по пакетам — в DEPENDENCIES.md в корне seashell.
+ * Конфигурация Vite: React, прокси /api, modern + legacy (как в шаблоне VK Mini Apps).
  */
 import { defineConfig, loadEnv, transformWithEsbuild } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -32,13 +31,19 @@ function threatJsFilesAsJsx() {
   };
 }
 
-/**
- * Some chunks may be large.
- * This will not affect the loading speed of the site.
- * We collect several versions of scripts that are applied depending on the browser version.
- * This is done so that your code runs equally well on the site and in the odr.
- * The details are here: https://dev.vk.ru/mini-apps/development/on-demand-resources.
- */
+function buildStampPlugin() {
+  const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  return {
+    name: 'build-stamp',
+    transformIndexHtml(html) {
+      return html.replace(
+        '<title>Seashell</title>',
+        `<title>Seashell</title>\n    <!-- seashell-build: ${stamp} -->`,
+      );
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   if (mode === 'production') {
     const env = loadEnv(mode, process.cwd(), '');
@@ -50,43 +55,41 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-  base: './',
+    base: './',
 
-  server: {
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:3001',
-        changeOrigin: true,
+    server: {
+      proxy: {
+        '/api': {
+          target: 'http://127.0.0.1:3001',
+          changeOrigin: true,
+        },
+      },
+      allowedHosts: true,
+      host: true,
+      ...(process.env.VITE_TUNNEL === '1' ? { hmr: false } : {}),
+    },
+
+    plugins: [
+      react(),
+      threatJsFilesAsJsx(),
+      handleModuleDirectivesPlugin(),
+      legacy({
+        targets: ['defaults', 'not IE 11'],
+      }),
+      buildStampPlugin(),
+    ],
+
+    optimizeDeps: {
+      force: true,
+      esbuildOptions: {
+        loader: {
+          '.js': 'jsx',
+        },
       },
     },
-    // Reverse tunnels (localhost.run и т.п.) меняют Host — иначе Vite отвечает "Blocked request"
-    allowedHosts: true,
-    host: true,
-    // За TLS-туннелем HMR (wss) часто не совпадает с портом/хостом — в WebView VK ломается загрузка.
-    // Запуск: PowerShell: $env:VITE_TUNNEL='1'; npm run start
-    ...(process.env.VITE_TUNNEL === '1' ? { hmr: false } : {}),
-  },
 
-  plugins: [
-    react(),
-    threatJsFilesAsJsx(),
-    handleModuleDirectivesPlugin(),
-    legacy({
-      targets: ['defaults', 'not IE 11'],
-    }),
-  ],
-
-  optimizeDeps: {
-    force: true,
-    esbuildOptions: {
-      loader: {
-        '.js': 'jsx',
-      },
+    build: {
+      outDir: 'build',
     },
-  },
-
-  build: {
-    outDir: 'build',
-  },
-};
+  };
 });

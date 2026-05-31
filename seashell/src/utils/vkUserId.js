@@ -37,8 +37,16 @@ export function captureVkLaunchParamsFromLocation() {
   if (typeof window === 'undefined') return;
   const qs = queryStringFromLocation();
   if (!qs || !qs.includes('vk_user_id=')) return;
+  storeVkLaunchParamsQueryString(qs);
+}
+
+/** Сохранить строку launch params (из URL или VKWebAppGetLaunchParams). */
+export function storeVkLaunchParamsQueryString(qs) {
+  if (typeof window === 'undefined') return;
+  const s = String(qs ?? '').trim().replace(/^\?/, '');
+  if (!s || !s.includes('vk_user_id=')) return;
   try {
-    window.sessionStorage?.setItem(LAUNCH_STORAGE_KEY, qs);
+    window.sessionStorage?.setItem(LAUNCH_STORAGE_KEY, s);
   } catch {
     // private mode / quota
   }

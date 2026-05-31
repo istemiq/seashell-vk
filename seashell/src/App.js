@@ -18,7 +18,7 @@ import { useActiveVkuiLocation } from '@vkontakte/vk-mini-apps-router';
 
 import { SeashellScreenSpinner } from './components/SeashellScreenSpinner.js';
 import { SplitModalSlotContext } from './context/SplitModalSlotContext.js';
-import { Persik, Home, Dictionary, Practice, Readme, Settings } from './panels';
+import { Persik, Home, Dictionary, Practice, Readme, Settings, Privacy } from './panels';
 import { DEFAULT_VIEW_PANELS } from './routes';
 import { withTimeout } from './utils/withTimeout.js';
 import { setVkUserIdFallback } from './api/dictionaryApi.js';
@@ -63,24 +63,34 @@ export const App = () => {
   const [splitModalMountEl, setSplitModalMountEl] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
+    // Не блокируем UI, если Bridge завис (модераторы / часть WebView).
+    const showUiTimer = window.setTimeout(() => {
+      if (!cancelled) setPopout(null);
+    }, 2500);
+
     async function fetchData() {
       try {
         const user = await withTimeout(bridge.send('VKWebAppGetUserInfo'), BRIDGE_USER_INFO_MS);
+        if (cancelled) return;
         setUser(user);
         if (user?.id) {
           setVkUserIdFallback(user.id);
         }
       } catch {
-        // Превью в IDE / браузер без VK: промис может висеть бесконечно — убираем спиннер по таймауту
-        // Для разработки вне VK ставим fallback, чтобы работали все панели (включая "Повторение").
+        if (cancelled) return;
         if (!getVkUserIdFromLocation() && !bridge.isWebView()) {
           setVkUserIdFallback(DEV_FALLBACK_VK_USER_ID);
         }
       } finally {
-        setPopout(null);
+        if (!cancelled) setPopout(null);
       }
     }
-    fetchData();
+    void fetchData();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(showUiTimer);
+    };
   }, []);
 
   return (
@@ -101,6 +111,7 @@ export const App = () => {
               <Practice id="practice" />
               <Readme id="readme" />
               <Settings id="settings" />
+              <Privacy id="privacy" />
             </View>
           )}
         </SplitCol>

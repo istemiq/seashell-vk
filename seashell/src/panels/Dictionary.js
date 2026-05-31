@@ -21,7 +21,6 @@ import {
   Text,
   Separator,
   Checkbox,
-  Link,
   ModalDismissButton,
 } from '@vkontakte/vkui';
 import PropTypes from 'prop-types';
@@ -30,7 +29,6 @@ import * as api from '../api/dictionaryApi.js';
 import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
 import { withTimeout } from '../utils/withTimeout.js';
 import { speakEnglish } from '../utils/tts.js';
-import { copyUrlToClipboard, openInBrowser } from '../utils/openInBrowser.js';
 import { useNavigateBackOrHome } from '../utils/useNavigateBackOrHome.js';
 import { SplitModalSlotContext } from '../context/SplitModalSlotContext.js';
 
@@ -68,12 +66,10 @@ export const Dictionary = ({ id }) => {
   const splitModalMount = useContext(SplitModalSlotContext);
   const goBackOrHome = useNavigateBackOrHome();
   const wordDetailHistoryRef = useRef(false);
-  const [vkUserId, setVkUserId] = useState(() => getVkUserIdFromLocation());
+  const [vkUserId, setVkUserId] = useState(() => api.resolveVkUserId());
   const [words, setWords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [ttsOpenOffer, setTtsOpenOffer] = useState(false);
-  const [appHref, setAppHref] = useState('');
 
   const [sets, setSets] = useState([]);
   const [setsLoading, setSetsLoading] = useState(false);
@@ -96,11 +92,6 @@ export const Dictionary = ({ id }) => {
   const [pendingSetIds, setPendingSetIds] = useState([]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    setAppHref(window.location.href);
-  }, []);
-
-  useEffect(() => {
     const onPopState = () => {
       if (!wordDetailHistoryRef.current) return;
       wordDetailHistoryRef.current = false;
@@ -119,7 +110,9 @@ export const Dictionary = ({ id }) => {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (getVkUserIdFromLocation()) {
+      const fromUrl = getVkUserIdFromLocation();
+      if (fromUrl) {
+        setVkUserId((prev) => prev ?? fromUrl);
         return;
       }
       try {
@@ -133,8 +126,7 @@ export const Dictionary = ({ id }) => {
           api.setVkUserIdFallback(DEV_FALLBACK_VK_USER_ID);
           setVkUserId(DEV_FALLBACK_VK_USER_ID);
         } else {
-          setError('Не удалось получить профиль VK');
-          setTtsOpenOffer(false);
+          setError('Не удалось получить профиль VK. Закройте мини-приложение и откройте снова из меню VK.');
         }
       }
     })();
@@ -150,7 +142,6 @@ export const Dictionary = ({ id }) => {
     }
     setLoading(true);
     setError(null);
-    setTtsOpenOffer(false);
     try {
       const data =
         screen === 'group' && Number.isFinite(activeSetId) && activeSetId > 0
@@ -159,7 +150,6 @@ export const Dictionary = ({ id }) => {
       setWords(data.words || []);
     } catch (e) {
       setError(e.message || 'Ошибка загрузки');
-      setTtsOpenOffer(false);
     } finally {
       setLoading(false);
     }
@@ -177,7 +167,6 @@ export const Dictionary = ({ id }) => {
       setSets(Array.isArray(data.sets) ? data.sets : []);
     } catch (e) {
       setError(e.message || 'Ошибка загрузки групп');
-      setTtsOpenOffer(false);
     } finally {
       setSetsLoading(false);
     }
@@ -195,7 +184,6 @@ export const Dictionary = ({ id }) => {
     setWordSetsModalOpen(false);
     setModalNewSetName('');
     setError(null);
-    setTtsOpenOffer(false);
     try {
       const d = await api.fetchWord(wordId);
       setDetail(d);
@@ -206,7 +194,6 @@ export const Dictionary = ({ id }) => {
       }
     } catch (e) {
       setError(e.message || 'Ошибка');
-      setTtsOpenOffer(false);
       setSelectedId(null);
     } finally {
       setDetailLoading(false);
@@ -232,7 +219,6 @@ export const Dictionary = ({ id }) => {
     if (!w || !vkUserId) return;
     setAdding(true);
     setError(null);
-    setTtsOpenOffer(false);
     try {
       const created = await api.addWord(w);
       // Если мы внутри группы — сразу назначаем новое слово в эту группу.
@@ -248,7 +234,6 @@ export const Dictionary = ({ id }) => {
       // Остаёмся в списке слов; карточку открываем только по тапу на слово.
     } catch (e) {
       setError(e.message || 'Не удалось добавить');
-      setTtsOpenOffer(false);
     } finally {
       setAdding(false);
     }
@@ -258,7 +243,6 @@ export const Dictionary = ({ id }) => {
     if (!selectedId || !vkUserId) return;
     setRefreshing(true);
     setError(null);
-    setTtsOpenOffer(false);
     try {
       const d = await api.refreshWordExamples(selectedId);
       setDetail(d);
@@ -266,7 +250,6 @@ export const Dictionary = ({ id }) => {
       await loadList();
     } catch (e) {
       setError(e.message || 'Не удалось обновить примеры');
-      setTtsOpenOffer(false);
     } finally {
       setRefreshing(false);
     }
@@ -281,7 +264,6 @@ export const Dictionary = ({ id }) => {
       await loadList();
     } catch (err) {
       setError(err.message || 'Ошибка удаления');
-      setTtsOpenOffer(false);
     }
   };
 
@@ -320,14 +302,12 @@ export const Dictionary = ({ id }) => {
     if (!name || !vkUserId) return;
     setCreatingSet(true);
     setError(null);
-    setTtsOpenOffer(false);
     try {
       await api.createSet(name);
       setNewSetName('');
       await loadSets();
     } catch (e) {
       setError(e.message || 'Не удалось создать группу');
-      setTtsOpenOffer(false);
     } finally {
       setCreatingSet(false);
     }
@@ -340,13 +320,11 @@ export const Dictionary = ({ id }) => {
     const name = String(next).trim().replace(/\s+/g, ' ');
     if (!name) return;
     setError(null);
-    setTtsOpenOffer(false);
     try {
       await api.renameSet(sid, name);
       await loadSets();
     } catch (e) {
       setError(e.message || 'Не удалось переименовать');
-      setTtsOpenOffer(false);
     }
   };
 
@@ -359,7 +337,6 @@ export const Dictionary = ({ id }) => {
       return;
     }
     setError(null);
-    setTtsOpenOffer(false);
     try {
       const r = await api.deleteSet(sid);
       const removedWordIds = Array.isArray(r?.removedWordIds) ? r.removedWordIds : [];
@@ -374,7 +351,6 @@ export const Dictionary = ({ id }) => {
       await loadList();
     } catch (e) {
       setError(e.message || 'Не удалось удалить группу');
-      setTtsOpenOffer(false);
     }
   };
 
@@ -418,7 +394,6 @@ export const Dictionary = ({ id }) => {
     if (!name || !vkUserId) return;
     setCreatingSetInModal(true);
     setError(null);
-    setTtsOpenOffer(false);
     try {
       const created = await api.createSet(name);
       setModalNewSetName('');
@@ -429,7 +404,6 @@ export const Dictionary = ({ id }) => {
       }
     } catch (e) {
       setError(e.message || 'Не удалось создать группу');
-      setTtsOpenOffer(false);
     } finally {
       setCreatingSetInModal(false);
     }
@@ -438,7 +412,6 @@ export const Dictionary = ({ id }) => {
   const saveWordSets = async () => {
     if (selectedId == null || !vkUserId) return;
     setError(null);
-    setTtsOpenOffer(false);
     try {
       const r = await api.updateWordSets(selectedId, pendingSetIds);
       const out = Array.isArray(r?.setIds) ? r.setIds : pendingSetIds;
@@ -448,7 +421,6 @@ export const Dictionary = ({ id }) => {
       await loadList();
     } catch (e) {
       setError(e.message || 'Не удалось сохранить группы');
-      setTtsOpenOffer(false);
     }
   };
 
@@ -600,55 +572,6 @@ export const Dictionary = ({ id }) => {
         <Group>
           <Box>
             <Text>{error}</Text>
-            {ttsOpenOffer && (
-              <Box style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                <Button
-                  type="button"
-                  size="m"
-                  mode="secondary"
-                  onClick={() => {
-                    void (async () => {
-                      const r = await openInBrowser();
-                      if (!r?.ok) {
-                        setError(r?.error || 'Не удалось открыть во внешнем браузере');
-                        return;
-                      }
-                      if (r.method === 'clipboard') {
-                        setError(
-                          'Похоже, VK не дал открыть внешний браузер автоматически. Ссылка скопирована — вставь её во внешнем браузере.',
-                        );
-                        return;
-                      }
-                      setError(null);
-                    })();
-                  }}
-                >
-                  Открыть в браузере
-                </Button>
-                <Button
-                  type="button"
-                  size="m"
-                  mode="tertiary"
-                  onClick={() => {
-                    void (async () => {
-                      const r = await copyUrlToClipboard();
-                      if (!r?.ok) {
-                        setError(r?.error || 'Не удалось скопировать ссылку');
-                        return;
-                      }
-                      setError('Ссылка скопирована — вставь её во внешнем браузере.');
-                    })();
-                  }}
-                >
-                  Скопировать ссылку
-                </Button>
-                {appHref ? (
-                  <Link href={appHref} target="_blank" rel="noopener noreferrer">
-                    Открыть как ссылку
-                  </Link>
-                ) : null}
-              </Box>
-            )}
           </Box>
         </Group>
       )}
@@ -930,7 +853,6 @@ export const Dictionary = ({ id }) => {
                   onClick={() => {
                     void speakEnglish(currentExampleText).catch((e) => {
                       setError(e?.message || 'Озвучка недоступна');
-                      setTtsOpenOffer(true);
                     });
                   }}
                 >

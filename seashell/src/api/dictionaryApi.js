@@ -32,7 +32,7 @@ export function setVkUserIdFallback(id) {
   vkUserIdFallback = Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function resolveVkUserId() {
+export function resolveVkUserId() {
   return getVkUserIdFromLocation() ?? vkUserIdFallback;
 }
 
@@ -221,5 +221,3 @@ export async function refreshWordExamples(wordId) {
   }
   return JSON.parse(text);
 }
-
-export { resolveVkUserId };

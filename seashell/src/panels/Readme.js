@@ -8,13 +8,13 @@ import {
   Button,
 } from '@vkontakte/vkui';
 import PropTypes from 'prop-types';
+import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 
 import { useNavigateBackOrHome } from '../utils/useNavigateBackOrHome.js';
-import { openInBrowser } from '../utils/openInBrowser.js';
-import { getPrivacyPolicyPageUrl } from '../utils/privacyPolicyUrl.js';
 
 export const Readme = ({ id }) => {
   const goBackOrHome = useNavigateBackOrHome();
+  const routeNavigator = useRouteNavigator();
 
   return (
     <Panel id={id}>
@@ -87,17 +87,14 @@ export const Readme = ({ id }) => {
 
       <Group header={<Header mode="secondary">Юридическое</Header>}>
         <Text style={{ lineHeight: 1.6, marginBottom: 10 }}>
-          Политика конфиденциальности. Откроется в браузере.
+          Политика конфиденциальности открывается внутри приложения.
         </Text>
         <Button
           type="button"
           mode="secondary"
           size="m"
           stretched
-          onClick={() => {
-            const url = getPrivacyPolicyPageUrl();
-            if (url) void openInBrowser(url);
-          }}
+          onClick={() => routeNavigator.push('/privacy')}
         >
           Политика конфиденциальности
         </Button>
