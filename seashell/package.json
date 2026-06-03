@@ -12,7 +12,10 @@
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "tunnel": "vk-tunnel --http-protocol=http --host=localhost --port=5173",
-    "deploy": "vite build && vk-miniapps-deploy",
+    "deploy": "vite build && node scripts/vk-deploy.mjs",
+    "deploy:prod": "vite build && node scripts/deploy-prod.mjs",
+    "verify:hosting": "node scripts/verify-hosting.mjs",
+    "placement:show": "node scripts/placement-show.mjs",
     "api": "node server/index.js",
     "compose": "docker compose up --build",
     "compose:detach": "docker compose up --build -d"
@@ -31,7 +34,7 @@
   "devDependencies": {
     "@vitejs/plugin-legacy": "^5.3.1",
     "@vitejs/plugin-react": "^4.2.1",
-    "@vkontakte/vk-miniapps-deploy": "^0.1.6",
+    "@vkontakte/vk-miniapps-deploy": "^1.0.2",
     "@vkontakte/vk-tunnel": "^0.2.4",
     "concurrently": "^9.2.1",
     "eruda": "^3.0.1",

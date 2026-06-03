@@ -110,6 +110,71 @@ body,
   color: var(--crt-fg) !important;
 }
 
+/* Подтверждение вместо window.confirm (iOS WebView VK) */
+.seashell-confirm-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+    max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+.seashell-confirm-shell__backdrop {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: rgba(4, 6, 10, 0.78);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.seashell-confirm-shell__dialog {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
+  background: var(--crt-bg-elev);
+  border: 1px solid var(--crt-border);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+}
+
+.seashell-confirm-shell__body {
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Мобильные: боковые и нижние отступы (Android/iOS, m.vk) */
+.seashell-crt .vkuiPanel__host {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.seashell-crt .vkuiPanel__in {
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+}
+
+@media (min-width: 768px) {
+  .seashell-crt .vkuiPanel__in {
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+  }
+}
+
+.seashell-crt .seashell-dict-delete-btn {
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
 .seashell-wordsets-shell__body {
   flex: 1 1 auto;
   min-height: 0;

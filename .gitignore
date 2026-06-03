@@ -2,6 +2,9 @@
 seashell/node_modules/
 seashell/server/node_modules/
 
+# Last deploy URLs (local checklist, do not commit)
+seashell/.deploy-urls.json
+
 # Build output
 seashell/build/
 seashell/dist/

@@ -31,6 +31,7 @@ import { withTimeout } from '../utils/withTimeout.js';
 import { speakEnglish } from '../utils/tts.js';
 import { useNavigateBackOrHome } from '../utils/useNavigateBackOrHome.js';
 import { SplitModalSlotContext } from '../context/SplitModalSlotContext.js';
+import { SeashellConfirm } from '../components/SeashellConfirm.js';
 
 const BRIDGE_GET_USER_MS = 8000;
 const DEV_FALLBACK_VK_USER_ID = Number(import.meta.env.VITE_DEV_VK_USER_ID) || 1000001;
@@ -90,6 +91,28 @@ export const Dictionary = ({ id }) => {
   const [modalNewSetName, setModalNewSetName] = useState('');
   const [creatingSetInModal, setCreatingSetInModal] = useState(false);
   const [pendingSetIds, setPendingSetIds] = useState([]);
+  const [confirmUi, setConfirmUi] = useState(null);
+  const confirmResolveRef = useRef(null);
+
+  const showConfirm = useCallback((opts) => {
+    return new Promise((resolve) => {
+      confirmResolveRef.current = resolve;
+      setConfirmUi({
+        title: opts.title,
+        message: opts.message ?? '',
+        destructive: Boolean(opts.destructive),
+        confirmLabel: opts.confirmLabel ?? 'Да',
+        cancelLabel: opts.cancelLabel ?? 'Отмена',
+      });
+    });
+  }, []);
+
+  const finishConfirm = useCallback((ok) => {
+    setConfirmUi(null);
+    const resolve = confirmResolveRef.current;
+    confirmResolveRef.current = null;
+    resolve?.(ok);
+  }, []);
 
   useEffect(() => {
     const onPopState = () => {
@@ -257,7 +280,18 @@ export const Dictionary = ({ id }) => {
 
   const removeWord = async (wordId, e) => {
     e?.stopPropagation?.();
-    if (!vkUserId || !window.confirm('Удалить слово и все примеры?')) return;
+    e?.preventDefault?.();
+    if (!vkUserId) {
+      setError('Не удалось определить пользователя VK. Закройте мини-приложение и откройте снова из VK.');
+      return;
+    }
+    const ok = await showConfirm({
+      title: 'Удалить слово?',
+      message: 'Слово и все примеры будут удалены без восстановления.',
+      destructive: true,
+      confirmLabel: 'Удалить',
+    });
+    if (!ok) return;
     try {
       await api.removeWord(wordId);
       if (selectedId === wordId) closeWord();
@@ -329,11 +363,14 @@ export const Dictionary = ({ id }) => {
   };
 
   const doDeleteSet = async (sid) => {
-    if (
-      !window.confirm(
-        'Группа будет удалена. Слова, которые останутся без групп, тоже будут удалены. Продолжить?',
-      )
-    ) {
+    const ok = await showConfirm({
+      title: 'Удалить группу?',
+      message:
+        'Группа будет удалена. Слова, которые останутся без групп, тоже будут удалены.',
+      destructive: true,
+      confirmLabel: 'Удалить',
+    });
+    if (!ok) {
       return;
     }
     setError(null);
@@ -557,6 +594,17 @@ export const Dictionary = ({ id }) => {
   return (
     <Panel id={id}>
       {wordSetsModal}
+      <SeashellConfirm
+        mountEl={splitModalMount}
+        open={Boolean(confirmUi)}
+        title={confirmUi?.title ?? ''}
+        message={confirmUi?.message}
+        destructive={confirmUi?.destructive}
+        confirmLabel={confirmUi?.confirmLabel}
+        cancelLabel={confirmUi?.cancelLabel}
+        onConfirm={() => finishConfirm(true)}
+        onCancel={() => finishConfirm(false)}
+      />
 
       <PanelHeader before={<PanelHeaderBack onClick={onBack} />}>
         {selectedId != null ? headerTitle : screen === 'group' ? activeSetName : 'Словарь'}
@@ -719,9 +767,10 @@ export const Dictionary = ({ id }) => {
                       <Button
                         type="button"
                         mode="tertiary"
+                        size="m"
+                        className="seashell-dict-delete-btn"
                         onClick={(e) => {
-                          e.stopPropagation();
-                          removeWord(w.id, e);
+                          void removeWord(w.id, e);
                         }}
                       >
                         Удалить
@@ -860,6 +909,19 @@ export const Dictionary = ({ id }) => {
                 </Button>
                 <Button size="l" stretched mode="secondary" disabled={refreshing} onClick={nextExample}>
                   Другой пример
+                </Button>
+                <Button
+                  type="button"
+                  size="l"
+                  stretched
+                  mode="tertiary"
+                  appearance="negative"
+                  disabled={refreshing}
+                  onClick={() => {
+                    void removeWord(selectedId, null);
+                  }}
+                >
+                  Удалить слово
                 </Button>
               </Box>
             </>

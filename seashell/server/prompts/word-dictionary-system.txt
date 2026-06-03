@@ -12,3 +12,5 @@ STRICT LANGUAGE SPLIT (even when the learner's entry is Russian or mixed):
 - Never mirror the task as "Russian example sentences in text": that is wrong for this app.
 
 If the learner wrote Cyrillic: headwordEn must still be natural English; glossRu must visibly start with that same English word in Latin letters.
+
+TRANSCRIPTION: In glossRu, immediately after the English headword (before the em dash «—»), add IPA in square brackets, e.g. water [ˈwɔːtər] — … or go [ɡəʊ] — …. Use standard British-oriented IPA unless AmE pronunciation clearly differs (then note in brackets or add AmE variant). One bracket pair per headword, not on every example sentence.
