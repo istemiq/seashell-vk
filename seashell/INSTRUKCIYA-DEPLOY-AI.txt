@@ -1,0 +1,227 @@
+================================================================================
+  ИНСТРУКЦИЯ ДЛЯ AI И РАЗРАБОТЧИКА: SEASHELL VK
+  (не деплоить «через жопу»)
+================================================================================
+
+Читать ПЕРЕД любыми советами по деплою, VPS, prod 403 и «это виноват VK».
+
+Пользователь: Windows + PowerShell (npm.cmd, не npm).
+Репозиторий локально: C:\Users\Пайчармик\seashell_vk\seashell
+
+
+--------------------------------------------------------------------------------
+ГЛАВНОЕ ПРАВИЛО
+--------------------------------------------------------------------------------
+
+НИКОГДА не своди проблему только к VK. Почти всегда цепочка из нескольких звеньев:
+
+  1. Фронт (сборка, VITE_API_URL, хостинг VK, размещение)
+  2. Бэкенд (путь на VPS, .env, VK_APP_SECRET, ответы роботу VK)
+  3. VK (CDN pages-ac, лимит 24 deploy/сутки, модерация, код с телефона)
+
+Если prod 403 — ищи ВСЕ ТРИ, не утешай «подождите VK».
+
+
+--------------------------------------------------------------------------------
+КОНСТАНТЫ ПРОЕКТА
+--------------------------------------------------------------------------------
+
+  App ID ...................... 54526886
+  API (prod) .................. https://api.sishel.ru
+  VPS SSH ..................... root@155.212.141.148
+                                 (hostname uzzlnyowyi с Windows НЕ резолвится — только IP)
+  Рабочий бэкенд на VPS ....... /root/seashell-server-new/
+                                 НЕ /root/seashell/
+  Процесс API ................. pm2, имя seashell-api
+                                 скрипт /root/seashell-server-new/index.js
+  systemd seashell-api .......... НЕТ — не предлагать systemctl restart seashell-api
+  Размещение VK ............... https://dev.vk.com/admin/app-54526886/placement
+  Настройки app ............... https://dev.vk.com/admin/app-54526886
+
+
+--------------------------------------------------------------------------------
+VPS: КУДА КОПИРОВАТЬ И ЧТО ПРАВИТЬ
+--------------------------------------------------------------------------------
+
+ЧАСТАЯ ОШИБКА:
+  Правят /root/seashell/server/.env и копируют index.js туда,
+  а pm2 крутит ДРУГУЮ папку.
+
+ПРАВИЛЬНЫЕ ПУТИ:
+  /root/seashell-server-new/index.js
+  /root/seashell-server-new/.env
+
+ДИАГНОСТИКА НА VPS:
+  pm2 list
+  pm2 show seashell-api
+  ss -tlnp | grep 3001
+  ps aux | grep node
+
+ОБНОВЛЕНИЕ БЭКЕНДА С ПК (PowerShell):
+  scp C:\Users\Пайчармик\seashell_vk\seashell\server\index.js root@155.212.141.148:/root/seashell-server-new/index.js
+
+НА VPS:
+  nano /root/seashell-server-new/.env
+  pm2 restart seashell-api
+
+ОБЯЗАТЕЛЬНЫЕ ПЕРЕМЕННЫЕ В .env НА VPS:
+  NODE_ENV=production
+  VK_APP_SECRET=<защищённый ключ из dev.vk, НЕ сервисный>
+  VK_REVIEWER_USER_ID=1
+  CORS_ORIGINS=https://vk.com,https://m.vk.com,https://web.vk.com,https://vk.ru,https://m.vk.ru
+  DATABASE_URL=...
+  GIGACHAT_API_KEY=...
+  PORT=3001
+
+  VK_REVIEWER_USER_ID — синтетический id без личных данных в БД.
+  Fallback для робота VK на GET /api/words, /api/sets с Origin *.vk-apps.com.
+
+ПРОВЕРКА БЭКЕНДА ПОСЛЕ ПРАВОК:
+  curl -s http://127.0.0.1:3001/api/health
+  curl -s -w "\nHTTP: %{http_code}\n" -H "Origin: https://stage-app54526886-test.pages.vk-apps.com" http://127.0.0.1:3001/api/words
+
+  Ожидание: health ok, words HTTP 200 (не 401).
+
+
+--------------------------------------------------------------------------------
+ДВА РАЗНЫХ КЛЮЧА VK (НЕ ПУТАТЬ!)
+--------------------------------------------------------------------------------
+
+  Защищённый ключ (dev.vk → Ключи доступа)
+    → VK_APP_SECRET в /root/seashell-server-new/.env
+    → проверка vk_sign на API
+
+  Сервисный ключ (dev.vk → Ключи доступа)
+    → $env:MINI_APPS_ACCESS_TOKEN при деплое
+    → vk-miniapps-deploy
+
+  dev.vk.com/ru/access — 404, не отправлять туда.
+
+  Деплой без ручного токена:
+    Удалить C:\Users\Пайчармик\.config\configstore\@vkontakte\vk-miniapps-deploy.json
+    Запустить deploy — откроется браузерная авторизация.
+
+  Короткий/старый токен → invalid access_token (4).
+
+
+--------------------------------------------------------------------------------
+ДЕПЛОЙ ФРОНТА (WINDOWS)
+--------------------------------------------------------------------------------
+
+ПЕРЕД СБОРКОЙ — файл seashell/.env.production:
+  VITE_API_URL=https://api.sishel.ru
+
+vk-hosting-config.json:
+  update_prod: 1  — ПЕРЕД deploy:prod (pages-ac + код с телефона)
+  update_prod: 0  — ПОСЛЕ успешного prod 200 (чтобы deploy:stage не трогал prod)
+
+КОМАНДЫ:
+  cd C:\Users\Пайчармик\seashell_vk\seashell
+  $env:MINI_APPS_ACCESS_TOKEN = "<сервисный ключ>"
+  npm.cmd run deploy:prod
+  npm.cmd run verify:hosting
+  npm.cmd run placement:show
+
+Только деплой без rebuild (если build/ уже есть):
+  node scripts/deploy-prod.mjs
+
+КРИТЕРИЙ УСПЕХА (не обманывать):
+  Deploy success .................. НЕТ — только zip залит
+  Stage 200, prod 403 ............. НЕТ — пользователи не видят app
+  Prod 200 + stage 200 ............ ДА — можно обновлять размещение
+  Dev mode вкл, у автора ок ....... НЕТ — не проверка для модерации
+
+В логе deploy:prod: URLs changed for production, prod URL на pages-ac.vk-apps.com.
+Лимит VK: ~24 deploy в сутки — не крутить подряд при 403.
+
+
+--------------------------------------------------------------------------------
+РАЗМЕЩЕНИЕ ПОСЛЕ УСПЕШНОГО DEPLOY
+--------------------------------------------------------------------------------
+
+  1. https://dev.vk.com/admin/app-54526886/placement
+  2. Prod-поля → URL из placement:show (pages-ac.vk-apps.com)
+  3. Stage-поля → stage URL (pages.vk-apps.com)
+  4. Сохранить
+  5. https://vk.com/app54526886 — режим разработки ВЫКЛ
+
+Временный обход (prod 403, stage 200, тот же хеш):
+  В prod-поля вставить stage URL → Сохранить.
+  Вернуть prod URL, когда verify:hosting покажет prod 200.
+
+  npm.cmd run placement:restore-prod
+  npm.cmd run placement:recovery
+
+
+--------------------------------------------------------------------------------
+ПОЧЕМУ PROD CDN БЛОКИРОВАЛСЯ (июнь 2026 — решено)
+--------------------------------------------------------------------------------
+
+Робот VK при публикации на pages-ac открывает билд на *.vk-apps.com
+без валидной vk_sign. Фронт дергает GET /api/words, /api/sets.
+Бэкенд с VK_APP_SECRET отвечал 401 → VK не публиковал хэш → 403 на статику.
+
+Фикс в server/index.js:
+  для GET с Origin/Referer *.vk-apps.com при плохой подписи —
+  гостевой VK_REVIEWER_USER_ID, ответ 200 с пустым словарём.
+  POST по-прежнему требует подпись.
+
+Статический curl prod index.html без JS может давать 403 до проверки —
+это не отменяет необходимости чинить API.
+
+
+--------------------------------------------------------------------------------
+РЕКЛАМА VK (не повторять баги)
+--------------------------------------------------------------------------------
+
+  - VKWebAppShowBannerAd, НЕ CheckBannerAd (Check = «уже показан»)
+  - Десктоп vk.com: bridge.isEmbedded() / isIframe(), не только isWebView()
+  - Заглушка «реклама после модерации» у админа — норма VK, не наш stub
+
+
+--------------------------------------------------------------------------------
+ЧЕГО НЕ ДЕЛАТЬ
+--------------------------------------------------------------------------------
+
+  1. «Это только VK» без проверки API 401, .env, пути на VPS, размещения
+  2. Копировать файлы в /root/seashell/ вместо seashell-server-new
+  3. ssh root@uzzlnyowyi с Windows без IP
+  4. Защищённый ключ в MINI_APPS_ACCESS_TOKEN
+  5. Считать deploy успешным без prod HTTP 200 в verify:hosting
+  6. Оставлять update_prod: 1 навсегда
+  7. Второй deploy:prod сразу после prod 403
+  8. Коммитить без запроса пользователя
+
+
+--------------------------------------------------------------------------------
+БЫСТРЫЙ ЧЕКЛИСТ «ПОЛНЫЙ ЦИКЛ»
+--------------------------------------------------------------------------------
+
+  [ ] index.js → scp → /root/seashell-server-new/index.js
+  [ ] .env → VK_APP_SECRET + VK_REVIEWER_USER_ID=1 в seashell-server-new
+  [ ] pm2 restart seashell-api
+  [ ] curl words с Origin vk-apps → 200
+  [ ] .env.production → VITE_API_URL=https://api.sishel.ru
+  [ ] vk-hosting-config.json → update_prod: 1
+  [ ] MINI_APPS_ACCESS_TOKEN = сервисный ключ
+  [ ] npm.cmd run deploy:prod → код с телефона → prod 200
+  [ ] dev.vk placement → сохранить prod + stage URL
+  [ ] vk.com/app54526886 dev mode OFF → словарь грузится
+  [ ] vk-hosting-config.json → update_prod: 0
+
+
+--------------------------------------------------------------------------------
+СМ. ТАКЖЕ В РЕПО
+--------------------------------------------------------------------------------
+
+  DEPLOY-GUARD.ru.md      — правила prod/stage
+  MODERATION-RUSH.ru.md   — срочный путь к модерации
+  DEPLOY-STEPS.ru.md      — полный онбординг
+  AGENTS.md               — та же инструкция в формате Markdown
+
+Last known good prod (запасной): 25a3c6dd9866 на pages-ac (placement:restore-prod).
+
+Текущий рабочий хэш (июнь 2026): 2fccaaa19365 — prod и stage 200
+после фикса бэкенда + deploy:prod.
+
+================================================================================

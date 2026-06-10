@@ -55,7 +55,7 @@ yarn run deploy
    `npm run build`
 
 4. **Статический хостинг VK** — `vk-hosting-config.json` уже указывает `build`. Команда: `npm run deploy` (понадобится `MINI_APPS_ACCESS_TOKEN` в окружении или при запросе утилиты).  
-   После deploy: `npm run verify:hosting` (prod должен быть **200**), затем `npm run placement:show` и [Размещение](https://dev.vk.com/admin/app-54526886/placement) → **Сохранить**. Production-выкладка: `npm run deploy:prod`. Срочно перед модерацией: [MODERATION-RUSH.ru.md](./MODERATION-RUSH.ru.md).
+   **Пользователям / модерации:** только `npm run deploy:prod` (проверяет prod **200** автоматически). Черновик: `npm run deploy` (stage). Затем `npm run placement:show` → [Размещение](https://dev.vk.com/admin/app-54526886/placement) → **Сохранить**. Правила: [DEPLOY-GUARD.ru.md](./DEPLOY-GUARD.ru.md), срочно: [MODERATION-RUSH.ru.md](./MODERATION-RUSH.ru.md).
 
 5. **Иконка в кабинете приложения VK** — в настройках/модерации загрузи PNG квадрат (часто просят **278×278** и меньшие). Из `public/logo.svg` экспортировать в редакторе или любым rasterizer.
 

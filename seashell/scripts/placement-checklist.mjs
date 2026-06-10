@@ -10,6 +10,16 @@ export const DEPLOY_URLS_FILE = join(root, '.deploy-urls.json');
 const APP_ID = 54526886;
 const DEV_PORTAL_PLACEMENT = `https://dev.vk.com/admin/app-${APP_ID}/placement`;
 
+/** Prod URL с тем же хешом, что у stage (если VK не напечатал prod в логе). */
+export function prodUrlFromStage(stageUrl) {
+  if (!stageUrl) return null;
+  const m = stageUrl.match(
+    /https:\/\/stage-app(\d+)-([a-f0-9]+)\.pages\.vk-apps\.com\/index\.html/,
+  );
+  if (!m) return null;
+  return `https://prod-app${m[1]}-${m[2]}.pages-ac.vk-apps.com/index.html`;
+}
+
 export function parseDeployOutput(text) {
   const prodMatches = [
     ...text.matchAll(
@@ -21,10 +31,10 @@ export function parseDeployOutput(text) {
       /https:\/\/stage-app54526886-[a-f0-9]+\.pages\.vk-apps\.com\/index\.html/g,
     ),
   ];
-  return {
-    prod: prodMatches.at(-1)?.[0] ?? null,
-    stage: stageMatches.at(-1)?.[0] ?? null,
-  };
+  const stage = stageMatches.at(-1)?.[0] ?? null;
+  const prod = prodMatches.at(-1)?.[0] ?? null;
+  const prodCandidate = prod ?? prodUrlFromStage(stage);
+  return { prod, stage, prodCandidate };
 }
 
 export function hashFromUrl(url) {
@@ -34,7 +44,7 @@ export function hashFromUrl(url) {
 }
 
 export function printPlacementChecklist(record) {
-  const { prod, stage, recordedAt } = record;
+  const { prod, stage, recordedAt, prodVerified, prodHttp, lastKnownGoodProd } = record;
   const prodHash = hashFromUrl(prod);
   const stageHash = hashFromUrl(stage);
   const hashesMatch = prodHash && stageHash && prodHash === stageHash;
@@ -46,17 +56,36 @@ export function printPlacementChecklist(record) {
   if (recordedAt) {
     console.log(`  Записано: ${recordedAt}`);
   }
+  if (prodHttp != null) {
+    console.log(`  prod HTTP: ${prodHttp}`);
+  }
   console.log('');
-  console.log('  Ссылка vk.ru/app54526886 открывает URL из dev.vk → Размещение,');
-  console.log('  а не файлы с вашего ПК. После каждого deploy сверьте хеш.');
+  console.log('  Ссылка vk.ru/app54526886 открывает URL из dev.vk → Размещение.');
   console.log('');
-  console.log('  PRODUCTION (поля URL, режим разработки ВЫКЛ):');
-  console.log(`  ${prod ?? '(не найден в логе — скопируйте из вывода deploy)'}`);
-  console.log('  Домен: pages-ac.vk-apps.com');
+
+  if (prodVerified && prod) {
+    console.log('  PROD — вставить в prod-поля (режим разработки ВЫКЛ):');
+    console.log(`  ${prod}`);
+  } else if (prod) {
+    console.log('  PROD в логе, но НЕ прошёл проверку — НЕ вставлять в prod-поля:');
+    console.log(`  ${prod}`);
+    if (stage) {
+      console.log('');
+      console.log('  Временно (новый код): stage URL в prod-поля:');
+      console.log(`  ${stage}`);
+    }
+    if (lastKnownGoodProd) {
+      console.log('');
+      console.log('  Или оставить последний рабочий prod (pages-ac):');
+      console.log(`  ${lastKnownGoodProd}`);
+    }
+  } else {
+    console.log('  PROD URL не найден в логе deploy.');
+  }
+
   console.log('');
   console.log('  STAGE (поля под «Режим разработки»):');
-  console.log(`  ${stage ?? '(не найден в логе — скопируйте из вывода deploy)'}`);
-  console.log('  Домен: pages.vk-apps.com (без -ac)');
+  console.log(`  ${stage ?? '(не найден в логе)'}`);
   console.log('');
 
   if (prodHash && stageHash) {
@@ -70,12 +99,14 @@ export function printPlacementChecklist(record) {
   console.log('');
   console.log('  Чеклист:');
   console.log(`  1. Открыть: ${DEV_PORTAL_PLACEMENT}`);
-  console.log('  2. Вставить PROD URL во все prod-поля (mobile, desktop, m.vk)');
-  console.log('  3. Вставить STAGE URL во все stage-поля (под режимом разработки)');
-  console.log('  4. Нажать «Сохранить»');
-  console.log('  5. Проверка: npm run verify:hosting (prod должен быть HTTP 200)');
-  console.log('  6. Режим разработки ВЫКЛ → vk.ru/app54526886 с телефона');
-  console.log('  7. Не сохранять форму со старым хешом — перезапишет автообновление');
+  if (prodVerified) {
+    console.log('  2. PROD URL (выше) → все prod-поля');
+  } else {
+    console.log('  2. Prod не 200 — не трогать мёртвый prod URL');
+  }
+  console.log('  3. STAGE URL → stage-поля (режим разработки)');
+  console.log('  4. Сохранить → vk.ru/app54526886 из приложения VK');
+  console.log('  5. npm run verify:hosting');
   console.log('');
   console.log('  Срочный план: см. MODERATION-RUSH.ru.md');
   console.log('  Повторить чеклист: npm run placement:show');

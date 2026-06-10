@@ -52,6 +52,7 @@ export const Practice = ({ id }) => {
   const [notice, setNotice] = useState(null);
   const [snackbar, setSnackbar] = useState(null);
   const [listening, setListening] = useState(false);
+  const [ttsSpeaking, setTtsSpeaking] = useState(false);
   const recRef = useRef(null);
 
   // Определяем vk_user_id для заголовка X-VK-User-Id (как в словаре).
@@ -172,16 +173,19 @@ export const Practice = ({ id }) => {
 
   const speakReply = (text) => {
     const s = loadSettings();
-    if (!s.ttsEnabled) return;
-    void speakEnglish(text).catch((e) => {
-      const msg = e?.message || 'Озвучка недоступна';
-      setNotice(msg);
-      setSnackbar(
-        <Snackbar onClose={() => setSnackbar(null)} duration={6500}>
-          {msg}
-        </Snackbar>,
-      );
-    });
+    if (!s.ttsEnabled || ttsSpeaking) return;
+    setTtsSpeaking(true);
+    void speakEnglish(text)
+      .catch((e) => {
+        const msg = e?.message || 'Озвучка недоступна';
+        setNotice(msg);
+        setSnackbar(
+          <Snackbar onClose={() => setSnackbar(null)} duration={6500}>
+            {msg}
+          </Snackbar>,
+        );
+      })
+      .finally(() => setTtsSpeaking(false));
   };
 
   const selectedTextOr = (fallback) => {
@@ -305,9 +309,11 @@ export const Practice = ({ id }) => {
                   size="m"
                   mode="tertiary"
                   style={{ marginTop: 8 }}
+                  loading={ttsSpeaking}
+                  disabled={ttsSpeaking}
                   onClick={() => speakReply(t.reply)}
                 >
-                  Прослушать ответ
+                  {ttsSpeaking ? 'Воспроизведение…' : 'Прослушать ответ'}
                 </Button>
               </Box>
             ))}

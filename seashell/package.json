@@ -13,9 +13,12 @@
     "preview": "vite preview",
     "tunnel": "vk-tunnel --http-protocol=http --host=localhost --port=5173",
     "deploy": "vite build && node scripts/vk-deploy.mjs",
+    "deploy:stage": "vite build && node scripts/vk-deploy.mjs",
     "deploy:prod": "vite build && node scripts/deploy-prod.mjs",
     "verify:hosting": "node scripts/verify-hosting.mjs",
     "placement:show": "node scripts/placement-show.mjs",
+    "placement:recovery": "node scripts/placement-recovery.mjs",
+    "placement:restore-prod": "node scripts/placement-restore-prod.mjs",
     "api": "node server/index.js",
     "compose": "docker compose up --build",
     "compose:detach": "docker compose up --build -d"

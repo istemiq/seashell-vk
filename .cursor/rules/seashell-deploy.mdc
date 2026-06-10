@@ -1,0 +1,16 @@
+---
+description: Seashell VK — деплой, VPS, prod 403; не сваливать на VK без проверки
+alwaysApply: true
+---
+
+# Seashell VK: перед деплоем прочитай `seashell/AGENTS.md`
+
+Кратко (полная инструкция в AGENTS.md):
+
+- **Не говори «это только VK»** без проверки бэкенда, `.env`, размещения и `verify:hosting`.
+- **VPS API:** `/root/seashell-server-new/` + `pm2 restart seashell-api` — **не** `/root/seashell/`, **не** `systemctl`.
+- **SSH с Windows:** `root@155.212.141.148` (не hostname `uzzlnyowyi`).
+- **Ключи:** защищённый → `VK_APP_SECRET` на VPS; **сервисный** → `MINI_APPS_ACCESS_TOKEN` при deploy.
+- **Деплой:** `npm.cmd run deploy:prod`, перед ним `update_prod: 1`, после prod 200 → `update_prod: 0`.
+- **Успех** = prod **и** stage HTTP 200 (`npm.cmd run verify:hosting`), затем placement на dev.vk.
+- App **54526886**, API **https://api.sishel.ru**, `VITE_API_URL` в `.env.production`.

@@ -27,11 +27,15 @@ npm.cmd run deploy:prod
 
 ### 2. Проверка без браузера
 
+`deploy:prod` **сам** проверяет prod после выкладки. Отдельно:
+
 ```powershell
 npm.cmd run verify:hosting
 ```
 
 Нужно: **prod HTTP: 200**. Если снова **403** — не делайте второй deploy сразу (лимит 24/сутки).
+
+Подробнее: [DEPLOY-GUARD.ru.md](./DEPLOY-GUARD.ru.md).
 
 ### 3. Размещение
 

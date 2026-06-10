@@ -92,6 +92,7 @@ export const Dictionary = ({ id }) => {
   const [creatingSetInModal, setCreatingSetInModal] = useState(false);
   const [pendingSetIds, setPendingSetIds] = useState([]);
   const [confirmUi, setConfirmUi] = useState(null);
+  const [ttsSpeaking, setTtsSpeaking] = useState(false);
   const confirmResolveRef = useRef(null);
 
   const showConfirm = useCallback((opts) => {
@@ -898,14 +899,19 @@ export const Dictionary = ({ id }) => {
                 <Button
                   size="l"
                   stretched
-                  disabled={!currentExampleText || refreshing}
+                  loading={ttsSpeaking}
+                  disabled={!currentExampleText || refreshing || ttsSpeaking}
                   onClick={() => {
-                    void speakEnglish(currentExampleText).catch((e) => {
-                      setError(e?.message || 'Озвучка недоступна');
-                    });
+                    if (ttsSpeaking) return;
+                    setTtsSpeaking(true);
+                    void speakEnglish(currentExampleText)
+                      .catch((e) => {
+                        setError(e?.message || 'Озвучка недоступна');
+                      })
+                      .finally(() => setTtsSpeaking(false));
                   }}
                 >
-                  Прослушать
+                  {ttsSpeaking ? 'Воспроизведение…' : 'Прослушать'}
                 </Button>
                 <Button size="l" stretched mode="secondary" disabled={refreshing} onClick={nextExample}>
                   Другой пример
@@ -928,6 +934,7 @@ export const Dictionary = ({ id }) => {
           )}
         </Group>
       )}
+
     </Panel>
   );
 };

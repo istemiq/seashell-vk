@@ -1,6 +1,6 @@
 /**
- * Синхронный VKWebAppInit до React (копия транспорта @vkontakte/vk-bridge).
- * Отдельный .js, не module — грузится в <head> без type="module".
+ * Ранний VKWebAppInit до React (копия транспорта @vkontakte/vk-bridge).
+ * Подключается в index.html как type="module" (требование Vite / prod CDN VK).
  */
 (function () {
   var CONNECT_VERSION = '2.15.11';

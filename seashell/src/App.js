@@ -23,6 +23,7 @@ import { DEFAULT_VIEW_PANELS } from './routes';
 import { withTimeout } from './utils/withTimeout.js';
 import { setVkUserIdFallback } from './api/dictionaryApi.js';
 import { getVkUserIdFromLocation } from './utils/vkUserId.js';
+import { tryShowVkBannerAd } from './utils/vkBannerAd.js';
 
 const BRIDGE_USER_INFO_MS = 8000;
 const DEV_FALLBACK_VK_USER_ID = Number(import.meta.env.VITE_DEV_VK_USER_ID) || 1000001;
@@ -92,6 +93,10 @@ export const App = () => {
       window.clearTimeout(showUiTimer);
     };
   }, []);
+
+  useEffect(() => {
+    void tryShowVkBannerAd();
+  }, [activePanel]);
 
   return (
     <SplitModalSlotContext.Provider value={splitModalMountEl}>

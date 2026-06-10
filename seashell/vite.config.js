@@ -1,9 +1,15 @@
 /**
  * Конфигурация Vite: React, прокси /api, modern + legacy (как в шаблоне VK Mini Apps).
  */
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { defineConfig, loadEnv, transformWithEsbuild } from 'vite';
 import react from '@vitejs/plugin-react';
 import legacy from '@vitejs/plugin-legacy';
+
+const viteRoot = dirname(fileURLToPath(import.meta.url));
 
 function handleModuleDirectivesPlugin() {
   return {
@@ -35,11 +41,31 @@ function buildStampPlugin() {
   const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
   return {
     name: 'build-stamp',
-    transformIndexHtml(html) {
-      return html.replace(
-        '<title>Seashell</title>',
-        `<title>Seashell</title>\n    <!-- seashell-build: ${stamp} -->`,
-      );
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html) {
+        return html.replace(
+          '<title>Seashell</title>',
+          `<title>Seashell</title>\n    <!-- seashell-build: ${stamp} -->`,
+        );
+      },
+    },
+  };
+}
+
+function vkEarlyInitPlugin() {
+  const initCode = readFileSync(join(viteRoot, 'public/vk-early-init.js'), 'utf8');
+  const tag = `<script type="module">\n${initCode}\n</script>`;
+  return {
+    name: 'vk-early-init-inline',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        return html.replace(
+          /<!-- seashell-build: [^>]+ -->/,
+          (match) => `${match}\n    ${tag}`,
+        );
+      },
     },
   };
 }
@@ -77,6 +103,7 @@ export default defineConfig(({ mode }) => {
         targets: ['defaults', 'not IE 11'],
       }),
       buildStampPlugin(),
+      vkEarlyInitPlugin(),
     ],
 
     optimizeDeps: {

@@ -2,8 +2,6 @@ import { Panel, PanelHeader, Header, Group, Cell, Avatar } from '@vkontakte/vkui
 import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import PropTypes from 'prop-types';
 
-import { SeashellBootlog } from '../components/SeashellBootlog';
-
 /** Короткие тезисы (EN): естественные формулировки для носителя */
 const HOME_TAGLINES_EN = [
   'Learn by doing.',
@@ -15,10 +13,6 @@ const HOME_TAGLINES_EN = [
 export const Home = ({ id, fetchedUser }) => {
   const { photo_200, city, first_name, last_name } = { ...fetchedUser };
   const routeNavigator = useRouteNavigator();
-  const userDisplayName = fetchedUser
-    ? [first_name, last_name].filter(Boolean).join(' ').trim()
-    : '';
-
   return (
     <Panel id={id}>
       <PanelHeader>Главная</PanelHeader>
@@ -37,7 +31,6 @@ export const Home = ({ id, fetchedUser }) => {
             </span>
           ))}
         </div>
-        <SeashellBootlog userDisplayName={userDisplayName} />
       </Group>
 
       {fetchedUser && (
