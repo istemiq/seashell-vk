@@ -9,20 +9,23 @@ import { bootstrapVkSession } from './utils/vkSession.js';
 import { tryShowVkBannerAd } from './utils/vkBannerAd.js';
 
 async function bootstrap() {
-  captureVkLaunchParamsFromLocation();
+  const inVk =
+    vkBridge.isEmbedded?.() || vkBridge.isWebView?.() || vkBridge.isIframe?.();
+
+  if (inVk) {
+    await bootstrapVkSession();
+  } else {
+    captureVkLaunchParamsFromLocation();
+    vkBridge.send('VKWebAppInit').catch(() => {});
+  }
 
   createRoot(document.getElementById('root')).render(<AppConfig />);
 
-  const inVk =
-    vkBridge.isEmbedded?.() || vkBridge.isWebView?.() || vkBridge.isIframe?.();
   if (inVk) {
-    await bootstrapVkSession();
     void tryShowVkBannerAd();
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') void tryShowVkBannerAd();
     });
-  } else {
-    vkBridge.send('VKWebAppInit').catch(() => {});
   }
 
   if (import.meta.env.MODE === 'development') {

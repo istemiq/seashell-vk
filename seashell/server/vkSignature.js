@@ -22,7 +22,8 @@ export function verifyVkLaunchParams(launchParams, appSecret) {
   if (!qs || !secret) return { ok: false, reason: 'missing' };
 
   const params = new URLSearchParams(qs);
-  const sign = params.get('vk_sign');
+  // VK в URL передаёт sign, Bridge — иногда vk_sign; принимаем оба (см. VKCOM/vk-apps-launch-params).
+  const sign = params.get('vk_sign') ?? params.get('sign');
   if (!sign) return { ok: false, reason: 'no_vk_sign' };
 
   const pairs = [];

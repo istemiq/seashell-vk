@@ -5,6 +5,22 @@
  */
 const LAUNCH_STORAGE_KEY = 'seashell_vk_launch_qs';
 
+/** VK в URL отдаёт sign=…; для API переименовываем в vk_sign без пересборки (сохраняем пустые vk_*). */
+export function normalizeLaunchParamsQueryString(qs) {
+  const s = String(qs ?? '').trim().replace(/^\?/, '');
+  if (!s || !s.includes('vk_user_id=')) return s;
+  if (/(?:^|&)vk_sign=/.test(s)) return s;
+  if (/(?:^|&)sign=/.test(s)) {
+    return s.replace(/(^|&)sign=/, '$1vk_sign=');
+  }
+  return s;
+}
+
+export function launchQueryHasSignature(qs) {
+  const s = String(qs ?? '');
+  return /(?:^|&)sign=/.test(s) || /(?:^|&)vk_sign=/.test(s);
+}
+
 function queryStringFromLocation() {
   if (typeof window === 'undefined') return '';
 
@@ -17,7 +33,11 @@ function queryStringFromLocation() {
   const qIdx = hash.indexOf('?');
   if (qIdx >= 0) {
     const fromHash = hash.slice(qIdx + 1);
-    if (fromHash.includes('vk_user_id=') || fromHash.includes('vk_sign=')) {
+    if (
+      fromHash.includes('vk_user_id=') ||
+      fromHash.includes('vk_sign=') ||
+      fromHash.includes('sign=')
+    ) {
       return fromHash;
     }
   }
@@ -43,7 +63,7 @@ export function captureVkLaunchParamsFromLocation() {
 /** Сохранить строку launch params (из URL или VKWebAppGetLaunchParams). */
 export function storeVkLaunchParamsQueryString(qs) {
   if (typeof window === 'undefined') return;
-  const s = String(qs ?? '').trim().replace(/^\?/, '');
+  const s = normalizeLaunchParamsQueryString(qs);
   if (!s || !s.includes('vk_user_id=')) return;
   try {
     window.sessionStorage?.setItem(LAUNCH_STORAGE_KEY, s);
@@ -58,16 +78,21 @@ export function storeVkLaunchParamsQueryString(qs) {
 export function getVkLaunchParamsFromLocation() {
   if (typeof window === 'undefined') return '';
 
+  const fromUrl = queryStringFromLocation();
+  if (fromUrl && fromUrl.includes('vk_user_id=') && launchQueryHasSignature(fromUrl)) {
+    return normalizeLaunchParamsQueryString(fromUrl);
+  }
+
   try {
     const stored = window.sessionStorage?.getItem(LAUNCH_STORAGE_KEY);
     if (stored && stored.includes('vk_user_id=')) {
-      return stored;
+      return normalizeLaunchParamsQueryString(stored);
     }
   } catch {
     // ignore
   }
 
-  return queryStringFromLocation();
+  return normalizeLaunchParamsQueryString(fromUrl);
 }
 
 export function getVkUserIdFromLocation() {

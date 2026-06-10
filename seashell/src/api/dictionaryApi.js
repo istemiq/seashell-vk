@@ -4,6 +4,7 @@
  * База URL: в проде задаётся VITE_API_URL; в dev — относительный `/api` + прокси Vite.
  */
 import { getVkLaunchParamsFromLocation, getVkUserIdFromLocation } from '../utils/vkUserId.js';
+import { refreshVkLaunchParamsFromBridge } from '../utils/vkSession.js';
 
 /**
  * Прод: VITE_API_URL=https://ИМЯ.beget.app или https://ИМЯ.beget.app/api
@@ -52,7 +53,7 @@ function headers() {
 const API_DOWN_HINT =
   'Бэкенд не отвечает (порт 3001). В папке seashell запусти: npm run dev — и не закрывай окно, пока тестируешь.';
 
-async function request(path, init = {}) {
+async function request(path, init = {}, { retriedAuth = false } = {}) {
   let r;
   try {
     r = await fetch(apiUrl(path), {
@@ -65,6 +66,14 @@ async function request(path, init = {}) {
     }
     throw e;
   }
+
+  if (!retriedAuth && r.status === 401) {
+    const t = await r.clone().text();
+    if (/launch params/i.test(t) && (await refreshVkLaunchParamsFromBridge())) {
+      return request(path, init, { retriedAuth: true });
+    }
+  }
+
   return r;
 }
 
