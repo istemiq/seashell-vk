@@ -11,13 +11,17 @@ import { assertAllowedUserContent } from './contentPolicy.js';
 import { WORD_EXAMPLE_COUNT } from './dictionaryConstants.js';
 import {
   initDb,
+  dictionaryGenerationCacheMeta,
   listWords,
   listWordsInSet,
   getWordWithExamples,
+  getCachedWordGeneration,
   insertWordWithExamples,
   replaceExamplesForWord,
   deleteWord,
   findWordByLemma,
+  findReusableWordGeneration,
+  saveCachedWordGeneration,
   listSets,
   createSet,
   renameSet,
@@ -30,6 +34,7 @@ import {
   tlsInsecure,
   logDictionaryPromptStartupInfo,
 } from './gigachat.js';
+import { enqueueGigaChat, gigaChatQueueStats } from './gigachatQueue.js';
 import { registerTts } from './tts.js';
 
 const app = express();
@@ -84,7 +89,7 @@ app.use(
 app.use(express.json({ limit: '256kb' }));
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, wordExampleLimit: WORD_EXAMPLE_COUNT });
+  res.json({ ok: true, wordExampleLimit: WORD_EXAMPLE_COUNT, gigaChatQueue: gigaChatQueueStats() });
 });
 
 function makeRateLimiter({ windowMs, max, keyFn }) {
@@ -200,6 +205,51 @@ function normalizeWord(w) {
     .replace(/\s+/g, ' ');
 }
 
+function responseStatusForGenerationError(e) {
+  const status = Number(e?.statusCode);
+  if (Number.isInteger(status) && status >= 400 && status < 600) return status;
+  return 502;
+}
+
+async function generateDictionaryPayload(word) {
+  const meta = dictionaryGenerationCacheMeta();
+  const cached = await getCachedWordGeneration(word, meta);
+  if (cached) {
+    return { payload: cached, source: 'cache' };
+  }
+
+  const reusable = await findReusableWordGeneration(word);
+  if (reusable) {
+    await saveCachedWordGeneration(word, reusable, meta);
+    return { payload: reusable, source: 'existing-word' };
+  }
+
+  return enqueueGigaChat(async () => {
+    const cachedAfterWait = await getCachedWordGeneration(word, meta);
+    if (cachedAfterWait) {
+      return { payload: cachedAfterWait, source: 'cache' };
+    }
+
+    const reusableAfterWait = await findReusableWordGeneration(word);
+    if (reusableAfterWait) {
+      await saveCachedWordGeneration(word, reusableAfterWait, meta);
+      return { payload: reusableAfterWait, source: 'existing-word' };
+    }
+
+    const generated = await generateWordExamples(word);
+    await saveCachedWordGeneration(word, generated, meta);
+    if (
+      generated.headwordEn &&
+      normalizeWord(generated.headwordEn).toLowerCase() !== normalizeWord(word).toLowerCase()
+    ) {
+      await saveCachedWordGeneration(generated.headwordEn, generated, meta);
+    }
+    return { payload: generated, source: 'gigachat' };
+  }, {
+    label: `dictionary:${word}`,
+  });
+}
+
 // --- Разговорная практика (один ход диалога через GigaChat) ---
 const limitPractice = makeRateLimiter({
   windowMs: 60_000,
@@ -226,7 +276,9 @@ app.post('/api/practice/turn', limitPractice, async (req, res) => {
     .slice(-28)
     .map((m) => ({ role: m.role, text: m.text.slice(0, 1200) }));
   try {
-    const turn = await generatePracticeTurn({ userText, history });
+    const turn = await enqueueGigaChat(() => generatePracticeTurn({ userText, history }), {
+      label: `practice:${req.vkUserId}`,
+    });
     res.json({
       echo: turn.echo || userText,
       corrections: turn.corrections,
@@ -234,7 +286,7 @@ app.post('/api/practice/turn', limitPractice, async (req, res) => {
     });
   } catch (e) {
     console.error(e);
-    res.status(502).json({ error: e.message || 'Generation failed' });
+    res.status(responseStatusForGenerationError(e)).json({ error: e.message || 'Generation failed' });
   }
 });
 
@@ -365,12 +417,15 @@ async function handleRefreshExamples(req, res) {
     }
     const pol = assertAllowedUserContent(row.word);
     if (!pol.ok) return res.status(400).json({ error: pol.error });
-    const generated = await generateWordExamples(row.word);
+    const generated = await enqueueGigaChat(() => generateWordExamples(row.word), {
+      label: `dictionary-refresh:${row.word}`,
+    });
+    await saveCachedWordGeneration(row.word, generated, dictionaryGenerationCacheMeta());
     const saved = await replaceExamplesForWord(req.vkUserId, id, generated);
     res.json(saved);
   } catch (e) {
     console.error(e);
-    res.status(502).json({ error: e.message || 'Generation failed' });
+    res.status(responseStatusForGenerationError(e)).json({ error: e.message || 'Generation failed' });
   }
 }
 
@@ -387,7 +442,11 @@ app.post('/api/words', limitGeneration, async (req, res) => {
   if (!pol.ok) return res.status(400).json({ error: pol.error });
 
   try {
-    const generated = await generateWordExamples(word);
+    if (await findWordByLemma(req.vkUserId, word)) {
+      return res.status(409).json({ error: 'Word already exists' });
+    }
+
+    const { payload: generated, source } = await generateDictionaryPayload(word);
     const lemma = normalizeWord(generated.headwordEn);
     if (!lemma || lemma.length > 200) {
       return res.status(400).json({ error: 'Invalid word' });
@@ -401,10 +460,10 @@ app.post('/api/words', limitGeneration, async (req, res) => {
 
     const { headwordEn: _drop, ...payload } = generated;
     const saved = await insertWordWithExamples(req.vkUserId, lemma, payload);
-    res.status(201).json(saved);
+    res.status(201).json({ ...saved, generationSource: source });
   } catch (e) {
     console.error(e);
-    res.status(502).json({ error: e.message || 'Generation failed' });
+    res.status(responseStatusForGenerationError(e)).json({ error: e.message || 'Generation failed' });
   }
 });
 

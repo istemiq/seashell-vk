@@ -7,6 +7,7 @@ import bridge from '@vkontakte/vk-bridge';
 import { setVkUserIdFallback } from '../api/dictionaryApi.js';
 import {
   captureVkLaunchParamsFromLocation,
+  getVkLaunchParamsFromLocation,
   launchQueryHasSignature,
   storeVkLaunchParamsQueryString,
 } from './vkUserId.js';
