@@ -1,10 +1,15 @@
 /**
- * Конфигурация Vite: React, прокси /api → localhost:3001 (Express), legacy-бандл при необходимости.
- * Подробности по пакетам — в DEPENDENCIES.md в корне seashell.
+ * Конфигурация Vite: React, прокси /api, modern + legacy (как в шаблоне VK Mini Apps).
  */
-import { defineConfig, transformWithEsbuild } from 'vite';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { defineConfig, loadEnv, transformWithEsbuild } from 'vite';
 import react from '@vitejs/plugin-react';
 import legacy from '@vitejs/plugin-legacy';
+
+const viteRoot = dirname(fileURLToPath(import.meta.url));
 
 function handleModuleDirectivesPlugin() {
   return {
@@ -32,50 +37,86 @@ function threatJsFilesAsJsx() {
   };
 }
 
-/**
- * Some chunks may be large.
- * This will not affect the loading speed of the site.
- * We collect several versions of scripts that are applied depending on the browser version.
- * This is done so that your code runs equally well on the site and in the odr.
- * The details are here: https://dev.vk.ru/mini-apps/development/on-demand-resources.
- */
-export default defineConfig({
-  base: './',
-
-  server: {
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:3001',
-        changeOrigin: true,
+function buildStampPlugin() {
+  const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  return {
+    name: 'build-stamp',
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html) {
+        return html.replace(
+          '<title>Seashell</title>',
+          `<title>Seashell</title>\n    <!-- seashell-build: ${stamp} -->`,
+        );
       },
     },
-    // Reverse tunnels (localhost.run и т.п.) меняют Host — иначе Vite отвечает "Blocked request"
-    allowedHosts: true,
-    host: true,
-    // За TLS-туннелем HMR (wss) часто не совпадает с портом/хостом — в WebView VK ломается загрузка.
-    // Запуск: PowerShell: $env:VITE_TUNNEL='1'; npm run start
-    ...(process.env.VITE_TUNNEL === '1' ? { hmr: false } : {}),
-  },
+  };
+}
 
-  plugins: [
-    react(),
-    threatJsFilesAsJsx(),
-    handleModuleDirectivesPlugin(),
-    legacy({
-      targets: ['defaults', 'not IE 11'],
-    }),
-  ],
-
-  optimizeDeps: {
-    force: true,
-    esbuildOptions: {
-      loader: {
-        '.js': 'jsx',
+function vkEarlyInitPlugin() {
+  const initCode = readFileSync(join(viteRoot, 'public/vk-early-init.js'), 'utf8');
+  const tag = `<script type="module">\n${initCode}\n</script>`;
+  return {
+    name: 'vk-early-init-inline',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        return html.replace(
+          /<!-- seashell-build: [^>]+ -->/,
+          (match) => `${match}\n    ${tag}`,
+        );
       },
     },
-  },
+  };
+}
 
-  build: {
-    outDir: 'build',
-  },
+export default defineConfig(({ mode }) => {
+  if (mode === 'production') {
+    const env = loadEnv(mode, process.cwd(), '');
+    if (!String(env.VITE_API_URL ?? '').trim()) {
+      throw new Error(
+        'Для npm run build / deploy нужен VITE_API_URL в seashell/.env.production (например https://api.sishel.ru)',
+      );
+    }
+  }
+
+  return {
+    base: './',
+
+    server: {
+      proxy: {
+        '/api': {
+          target: 'http://127.0.0.1:3001',
+          changeOrigin: true,
+        },
+      },
+      allowedHosts: true,
+      host: true,
+      ...(process.env.VITE_TUNNEL === '1' ? { hmr: false } : {}),
+    },
+
+    plugins: [
+      react(),
+      threatJsFilesAsJsx(),
+      handleModuleDirectivesPlugin(),
+      legacy({
+        targets: ['defaults', 'not IE 11'],
+      }),
+      buildStampPlugin(),
+      vkEarlyInitPlugin(),
+    ],
+
+    optimizeDeps: {
+      force: true,
+      esbuildOptions: {
+        loader: {
+          '.js': 'jsx',
+        },
+      },
+    },
+
+    build: {
+      outDir: 'build',
+    },
+  };
 });

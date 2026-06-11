@@ -6,29 +6,114 @@
 import './load-env.js';
 import express from 'express';
 import cors from 'cors';
+import { verifyVkLaunchParams } from './vkSignature.js';
+import { assertAllowedUserContent } from './contentPolicy.js';
+import { WORD_EXAMPLE_COUNT } from './dictionaryConstants.js';
 import {
   initDb,
+  dictionaryGenerationCacheMeta,
   listWords,
+  listWordsInSet,
   getWordWithExamples,
+  getCachedWordGeneration,
   insertWordWithExamples,
   replaceExamplesForWord,
   deleteWord,
   findWordByLemma,
+  findReusableWordGeneration,
+  saveCachedWordGeneration,
+  listSets,
+  createSet,
+  renameSet,
+  deleteSetAndOrphanWords,
+  replaceWordSets,
 } from './db.js';
-import { generateWordExamples, generatePracticeTurn, tlsInsecure } from './gigachat.js';
+import {
+  generateWordExamples,
+  generatePracticeTurn,
+  tlsInsecure,
+  logDictionaryPromptStartupInfo,
+} from './gigachat.js';
+import { enqueueGigaChat, gigaChatQueueStats } from './gigachatQueue.js';
+import { registerTts } from './tts.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
 
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  next();
+});
+
 // --- Общие middleware: CORS (фронт на другом порту), JSON-тело запросов ---
-app.use(cors({ origin: true }));
+function allowedOrigins() {
+  const raw = String(process.env.CORS_ORIGINS ?? '').trim();
+  if (!raw) return null;
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+const ORIGINS = allowedOrigins();
+const isProd = String(process.env.NODE_ENV ?? '').toLowerCase() === 'production';
+
+/** VK Mini Apps static hosting (prod/stage *.pages*.vk-apps.com). */
+function isVkAppsHostingOrigin(origin) {
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    return host === 'vk-apps.com' || host.endsWith('.vk-apps.com');
+  } catch {
+    return false;
+  }
+}
+
+app.use(
+  cors({
+    origin(origin, cb) {
+      // non-browser requests (curl, server-to-server)
+      if (!origin) return cb(null, true);
+      // dev default: allow all
+      if (!isProd && !ORIGINS) return cb(null, true);
+      // prod default: allow none unless configured
+      if (isProd && !ORIGINS) return cb(new Error('CORS blocked'), false);
+      if (ORIGINS.includes(origin)) return cb(null, true);
+      if (isVkAppsHostingOrigin(origin)) return cb(null, true);
+      return cb(new Error('CORS blocked'), false);
+    },
+    credentials: false,
+  }),
+);
 app.use(express.json({ limit: '256kb' }));
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, wordExampleLimit: WORD_EXAMPLE_COUNT, gigaChatQueue: gigaChatQueueStats() });
 });
 
-function vkUserId(req) {
+function makeRateLimiter({ windowMs, max, keyFn }) {
+  const hits = new Map();
+  return (req, res, next) => {
+    const now = Date.now();
+    const key = String(keyFn(req) ?? '');
+    if (!key) return res.status(400).json({ error: 'Missing rate limit key' });
+    const cur = hits.get(key);
+    if (!cur || cur.resetAt <= now) {
+      hits.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    cur.count += 1;
+    if (cur.count > max) {
+      const retryAfterSec = Math.max(1, Math.ceil((cur.resetAt - now) / 1000));
+      res.setHeader('Retry-After', String(retryAfterSec));
+      return res.status(429).json({ error: 'Too many requests. Please slow down.' });
+    }
+    return next();
+  };
+}
+
+function vkUserIdFromHeader(req) {
   const h = req.headers['x-vk-user-id'];
   const n = h != null ? parseInt(String(h), 10) : NaN;
   if (!Number.isFinite(n) || n <= 0) {
@@ -37,12 +122,79 @@ function vkUserId(req) {
   return n;
 }
 
-// Маршруты ниже (всё после этого app.use) требуют заголовок X-VK-User-Id. /api/health объявлен выше — без авторизации.
-app.use((req, res, next) => {
-  const uid = vkUserId(req);
-  if (!uid) {
-    return res.status(401).json({ error: 'Missing or invalid X-VK-User-Id header' });
+function vkLaunchParamsFromHeader(req) {
+  const h = req.headers['x-vk-launch-params'];
+  const s = h != null ? String(h).trim() : '';
+  return s || null;
+}
+
+/** Синтетический vk_user_id для робота проверки деплоя VK (не должен содержать реальных данных). */
+function vkReviewerUserId() {
+  const n = parseInt(String(process.env.VK_REVIEWER_USER_ID ?? '1'), 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/** Запрос с CDN хостинга мини-аппа (робот VK грузит index.html отсюда, не с vk.com). */
+function isVkHostingRequest(req) {
+  const origin = req.headers.origin;
+  if (origin && isVkAppsHostingOrigin(origin)) return true;
+  const ref = String(req.headers.referer ?? '');
+  if (!ref) return false;
+  try {
+    const host = new URL(ref).hostname.toLowerCase();
+    return host === 'vk-apps.com' || host.endsWith('.vk-apps.com');
+  } catch {
+    return false;
   }
+}
+
+/** Безопасные GET, которые фронт может вызвать при старте; POST и мутации по-прежнему требуют подпись. */
+function isVkReviewerProbeRequest(req) {
+  if (req.method !== 'GET') return false;
+  const p = req.path;
+  return p === '/api/words' || p === '/api/sets' || /^\/api\/words\/\d+$/.test(p);
+}
+
+function tryVkReviewerProbe(req) {
+  if (!isVkHostingRequest(req) || !isVkReviewerProbeRequest(req)) return false;
+  req.vkUserId = vkReviewerUserId();
+  req.vkReviewerProbe = true;
+  return true;
+}
+
+// --- Public static: TTS mp3 cache (/tts/v1/...) ---
+// Must be registered before auth middleware: mp3 files are fetched by VK native player without headers.
+registerTts(app, { makeRateLimiter });
+
+// Маршруты ниже требуют авторизацию VK. /api/health — без неё.
+// При проверке деплоя робот VK открывает *.vk-apps.com без валидной vk_sign: для read-only GET
+// с этого origin отвечаем 200 с пустыми данными гостя, а не 401.
+app.use((req, res, next) => {
+  const secret = String(process.env.VK_APP_SECRET ?? '').trim();
+  const lp = vkLaunchParamsFromHeader(req);
+
+  if (secret) {
+    if (!lp) {
+      if (tryVkReviewerProbe(req)) return next();
+      return res.status(401).json({ error: 'Missing X-VK-Launch-Params header' });
+    }
+    const v = verifyVkLaunchParams(lp, secret);
+    if (!v.ok) {
+      if (tryVkReviewerProbe(req)) return next();
+      return res.status(401).json({ error: 'Invalid VK launch params signature' });
+    }
+    const uid = v.vkUserId != null ? parseInt(String(v.vkUserId), 10) : NaN;
+    if (!Number.isFinite(uid) || uid <= 0) {
+      if (tryVkReviewerProbe(req)) return next();
+      return res.status(401).json({ error: 'Missing or invalid vk_user_id in launch params' });
+    }
+    req.vkUserId = uid;
+    return next();
+  }
+
+  // Dev fallback (или если secret не настроен): старый заголовок.
+  const uid = vkUserIdFromHeader(req);
+  if (!uid) return res.status(401).json({ error: 'Missing or invalid X-VK-User-Id header' });
   req.vkUserId = uid;
   next();
 });
@@ -53,16 +205,80 @@ function normalizeWord(w) {
     .replace(/\s+/g, ' ');
 }
 
+function responseStatusForGenerationError(e) {
+  const status = Number(e?.statusCode);
+  if (Number.isInteger(status) && status >= 400 && status < 600) return status;
+  return 502;
+}
+
+async function generateDictionaryPayload(word) {
+  const meta = dictionaryGenerationCacheMeta();
+  const cached = await getCachedWordGeneration(word, meta);
+  if (cached) {
+    return { payload: cached, source: 'cache' };
+  }
+
+  const reusable = await findReusableWordGeneration(word);
+  if (reusable) {
+    await saveCachedWordGeneration(word, reusable, meta);
+    return { payload: reusable, source: 'existing-word' };
+  }
+
+  return enqueueGigaChat(async () => {
+    const cachedAfterWait = await getCachedWordGeneration(word, meta);
+    if (cachedAfterWait) {
+      return { payload: cachedAfterWait, source: 'cache' };
+    }
+
+    const reusableAfterWait = await findReusableWordGeneration(word);
+    if (reusableAfterWait) {
+      await saveCachedWordGeneration(word, reusableAfterWait, meta);
+      return { payload: reusableAfterWait, source: 'existing-word' };
+    }
+
+    const generated = await generateWordExamples(word);
+    await saveCachedWordGeneration(word, generated, meta);
+    if (
+      generated.headwordEn &&
+      normalizeWord(generated.headwordEn).toLowerCase() !== normalizeWord(word).toLowerCase()
+    ) {
+      await saveCachedWordGeneration(generated.headwordEn, generated, meta);
+    }
+    return { payload: generated, source: 'gigachat' };
+  }, {
+    label: `dictionary:${word}`,
+  });
+}
+
 // --- Разговорная практика (один ход диалога через GigaChat) ---
-app.post('/api/practice/turn', async (req, res) => {
+const limitPractice = makeRateLimiter({
+  windowMs: 60_000,
+  max: 10,
+  keyFn: (req) => `practice:${req.vkUserId}`,
+});
+
+const limitGeneration = makeRateLimiter({
+  windowMs: 60_000,
+  max: 6,
+  keyFn: (req) => `gen:${req.vkUserId}`,
+});
+
+app.post('/api/practice/turn', limitPractice, async (req, res) => {
   const userText = normalizeWord(req.body?.userText ?? req.body?.text ?? '');
   if (!userText || userText.length > 4000) {
     return res.status(400).json({ error: 'Invalid text' });
   }
-  const history = Array.isArray(req.body?.history) ? req.body.history : [];
-  const tone = typeof req.body?.tone === 'string' ? req.body.tone : undefined;
+  const pol = assertAllowedUserContent(userText);
+  if (!pol.ok) return res.status(400).json({ error: pol.error });
+  const historyRaw = Array.isArray(req.body?.history) ? req.body.history : [];
+  const history = historyRaw
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string')
+    .slice(-28)
+    .map((m) => ({ role: m.role, text: m.text.slice(0, 1200) }));
   try {
-    const turn = await generatePracticeTurn({ userText, history, tone });
+    const turn = await enqueueGigaChat(() => generatePracticeTurn({ userText, history }), {
+      label: `practice:${req.vkUserId}`,
+    });
     res.json({
       echo: turn.echo || userText,
       corrections: turn.corrections,
@@ -70,15 +286,84 @@ app.post('/api/practice/turn', async (req, res) => {
     });
   } catch (e) {
     console.error(e);
-    res.status(502).json({ error: e.message || 'Generation failed' });
+    res.status(responseStatusForGenerationError(e)).json({ error: e.message || 'Generation failed' });
   }
 });
 
 // --- Словарь: список, карточка, добавление, удаление, обновление примеров ---
 app.get('/api/words', async (req, res) => {
   try {
-    const rows = await listWords(req.vkUserId);
+    const setIdRaw = req.query?.setId;
+    const setId = setIdRaw != null && setIdRaw !== '' ? parseInt(String(setIdRaw), 10) : NaN;
+    const rows =
+      Number.isFinite(setId) && setId > 0
+        ? await listWordsInSet(req.vkUserId, setId)
+        : await listWords(req.vkUserId);
     res.json({ words: rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// --- Сеты слов ---
+app.get('/api/sets', async (req, res) => {
+  try {
+    const rows = await listSets(req.vkUserId);
+    res.json({ sets: rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/sets', async (req, res) => {
+  const name = String(req.body?.name ?? '').trim().replace(/\s+/g, ' ');
+  if (!name || name.length > 80) {
+    return res.status(400).json({ error: 'Invalid name' });
+  }
+  const pol = assertAllowedUserContent(name);
+  if (!pol.ok) return res.status(400).json({ error: pol.error });
+  try {
+    const created = await createSet(req.vkUserId, name);
+    res.status(201).json(created);
+  } catch (e) {
+    console.error(e);
+    // unique violation
+    if (String(e?.code) === '23505') {
+      return res.status(409).json({ error: 'Set already exists' });
+    }
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.patch('/api/sets/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const name = String(req.body?.name ?? '').trim().replace(/\s+/g, ' ');
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+  if (!name || name.length > 80) return res.status(400).json({ error: 'Invalid name' });
+  const pol = assertAllowedUserContent(name);
+  if (!pol.ok) return res.status(400).json({ error: pol.error });
+  try {
+    const updated = await renameSet(req.vkUserId, id, name);
+    if (!updated) return res.status(404).json({ error: 'Not found' });
+    res.json(updated);
+  } catch (e) {
+    console.error(e);
+    if (String(e?.code) === '23505') {
+      return res.status(409).json({ error: 'Set already exists' });
+    }
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.delete('/api/sets/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+  try {
+    const r = await deleteSetAndOrphanWords(req.vkUserId, id);
+    if (!r.deleted) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true, removedWordIds: r.removedWordIds });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Database error' });
@@ -93,6 +378,20 @@ app.get('/api/words/:id', async (req, res) => {
       return res.status(404).json({ error: 'Not found' });
     }
     res.json(row);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.put('/api/words/:id/sets', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'Invalid word id' });
+  const setIds = Array.isArray(req.body?.setIds) ? req.body.setIds : [];
+  try {
+    const out = await replaceWordSets(req.vkUserId, id, setIds);
+    if (!out) return res.status(404).json({ error: 'Not found' });
+    res.json({ setIds: out });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Database error' });
@@ -116,36 +415,55 @@ async function handleRefreshExamples(req, res) {
     if (!row) {
       return res.status(404).json({ error: 'Not found' });
     }
-    const generated = await generateWordExamples(row.word);
+    const pol = assertAllowedUserContent(row.word);
+    if (!pol.ok) return res.status(400).json({ error: pol.error });
+    const generated = await enqueueGigaChat(() => generateWordExamples(row.word), {
+      label: `dictionary-refresh:${row.word}`,
+    });
+    await saveCachedWordGeneration(row.word, generated, dictionaryGenerationCacheMeta());
     const saved = await replaceExamplesForWord(req.vkUserId, id, generated);
     res.json(saved);
   } catch (e) {
     console.error(e);
-    res.status(502).json({ error: e.message || 'Generation failed' });
+    res.status(responseStatusForGenerationError(e)).json({ error: e.message || 'Generation failed' });
   }
 }
 
 /** Два URL: короткий — для совместимости; длинный — как в REST. */
-app.post('/api/refresh-examples', handleRefreshExamples);
-app.post('/api/words/:id/refresh-examples', handleRefreshExamples);
+app.post('/api/refresh-examples', limitGeneration, handleRefreshExamples);
+app.post('/api/words/:id/refresh-examples', limitGeneration, handleRefreshExamples);
 
-app.post('/api/words', async (req, res) => {
+app.post('/api/words', limitGeneration, async (req, res) => {
   const word = normalizeWord(req.body?.word);
   if (!word || word.length > 200) {
     return res.status(400).json({ error: 'Invalid word' });
   }
+  const pol = assertAllowedUserContent(word);
+  if (!pol.ok) return res.status(400).json({ error: pol.error });
 
   try {
     if (await findWordByLemma(req.vkUserId, word)) {
       return res.status(409).json({ error: 'Word already exists' });
     }
 
-    const generated = await generateWordExamples(word);
-    const saved = await insertWordWithExamples(req.vkUserId, word, generated);
-    res.status(201).json(saved);
+    const { payload: generated, source } = await generateDictionaryPayload(word);
+    const lemma = normalizeWord(generated.headwordEn);
+    if (!lemma || lemma.length > 200) {
+      return res.status(400).json({ error: 'Invalid word' });
+    }
+    const polLemma = assertAllowedUserContent(lemma);
+    if (!polLemma.ok) return res.status(400).json({ error: polLemma.error });
+
+    if (await findWordByLemma(req.vkUserId, lemma)) {
+      return res.status(409).json({ error: 'Word already exists' });
+    }
+
+    const { headwordEn: _drop, ...payload } = generated;
+    const saved = await insertWordWithExamples(req.vkUserId, lemma, payload);
+    res.status(201).json({ ...saved, generationSource: source });
   } catch (e) {
     console.error(e);
-    res.status(502).json({ error: e.message || 'Generation failed' });
+    res.status(responseStatusForGenerationError(e)).json({ error: e.message || 'Generation failed' });
   }
 });
 
@@ -165,9 +483,21 @@ app.delete('/api/words/:id', async (req, res) => {
 
 async function start() {
   await initDb();
+  logDictionaryPromptStartupInfo();
+  if (
+    String(process.env.NODE_ENV ?? '').toLowerCase() === 'production' &&
+    !String(process.env.VK_APP_SECRET ?? '').trim()
+  ) {
+    console.warn('[seashell] VK_APP_SECRET пуст при NODE_ENV=production — клиент можно подделать только по X-VK-User-Id.');
+  }
+
   app.listen(PORT, '0.0.0.0', () => {
     const tls = process.env.GIGACHAT_TLS_INSECURE?.trim();
+    const model = String(process.env.GIGACHAT_MODEL_NAME || '').trim() || 'GigaChat';
     console.log(`API: http://0.0.0.0:${PORT} (PORT=${process.env.PORT ?? 'default 3001'})`);
+    console.log(
+      `GigaChat: model=${model} (из GIGACHAT_MODEL_NAME; пусто → в коде подставляется базовый GigaChat)`,
+    );
     console.log(
       `GigaChat TLS relaxed (undici): ${tlsInsecure() ? 'yes' : 'no'} | NODE_ENV=${process.env.NODE_ENV ?? '(не задан)'} | GIGACHAT_TLS_INSECURE=${tls ?? '(unset)'}`,
     );

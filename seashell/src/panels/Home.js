@@ -1,48 +1,38 @@
-import { useMemo, useState } from 'react';
-import { Panel, PanelHeader, Header, Group, Cell, Avatar, Text, Button } from '@vkontakte/vkui';
+import { Panel, PanelHeader, Header, Group, Cell, Avatar } from '@vkontakte/vkui';
 import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import PropTypes from 'prop-types';
 
-import { SeashellBootlog } from '../components/SeashellBootlog';
-import { loadSettings, updateSettings } from '../utils/settings.js';
+/** Короткие тезисы (EN): естественные формулировки для носителя */
+const HOME_TAGLINES_EN = [
+  'Learn by doing.',
+  'Grow your vocabulary.',
+  'Keep practicing.',
+  'Speak up.',
+];
 
 export const Home = ({ id, fetchedUser }) => {
   const { photo_200, city, first_name, last_name } = { ...fetchedUser };
   const routeNavigator = useRouteNavigator();
-  const userDisplayName = fetchedUser
-    ? [first_name, last_name].filter(Boolean).join(' ').trim()
-    : '';
-
-  const initialSettings = useMemo(() => loadSettings(), []);
-  const [onboarded, setOnboarded] = useState(!!initialSettings.onboarded);
-
   return (
     <Panel id={id}>
       <PanelHeader>Главная</PanelHeader>
       <Group>
-        <SeashellBootlog userDisplayName={userDisplayName} />
+        <div className="seashell-home-tagline" lang="en">
+          {HOME_TAGLINES_EN.map((line, i) => (
+            <span
+              key={line}
+              className={
+                i === 0
+                  ? 'seashell-home-tagline__line seashell-home-tagline__line--lead'
+                  : 'seashell-home-tagline__line'
+              }
+            >
+              {line}
+            </span>
+          ))}
+        </div>
       </Group>
 
-      {!onboarded && (
-        <Group header={<Header size="s">Как пользоваться</Header>}>
-          <Text style={{ lineHeight: 1.55 }}>
-            - **Словарь**: добавь слово или фразу — получишь краткое значение и примеры.
-            <br />
-            - **Практика**: напиши/продиктуй фразу — собеседник ответит и при необходимости подскажет правку.
-          </Text>
-          <Button
-            size="m"
-            stretched
-            style={{ marginTop: 12 }}
-            onClick={() => {
-              updateSettings({ onboarded: true });
-              setOnboarded(true);
-            }}
-          >
-            Понятно
-          </Button>
-        </Group>
-      )}
       {fetchedUser && (
         <Group header={<Header size="s">Профиль</Header>}>
           <Cell before={photo_200 && <Avatar src={photo_200} />} subtitle={city?.title}>

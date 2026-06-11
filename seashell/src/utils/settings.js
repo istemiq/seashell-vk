@@ -1,10 +1,10 @@
 const STORAGE_KEY = 'seashell_settings_v1';
 
 export const DEFAULT_SETTINGS = {
-  onboarded: false,
   ttsEnabled: true,
   ttsRate: 0.95,
-  practiceTone: 'neutral', // neutral | friendly | strict
+  /** Voice accent for backend Piper (also used as hint for Web Speech fallback). */
+  ttsLocale: 'en-US',
 };
 
 function safeParse(json) {

@@ -23,15 +23,16 @@ import {
   Spinner,
   Snackbar,
 } from '@vkontakte/vkui';
-import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import PropTypes from 'prop-types';
 
-import { setVkUserIdFallback } from '../api/dictionaryApi.js';
+import { resolveVkUserId, setVkUserIdFallback } from '../api/dictionaryApi.js';
 import { addWord as addWordToDictionary } from '../api/dictionaryApi.js';
 import * as practiceApi from '../api/practiceApi.js';
 import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
 import { withTimeout } from '../utils/withTimeout.js';
 import { loadSettings } from '../utils/settings.js';
+import { speakEnglish } from '../utils/tts.js';
+import { useNavigateBackOrHome } from '../utils/useNavigateBackOrHome.js';
 
 const BRIDGE_GET_USER_MS = 8000;
 const DEV_FALLBACK_VK_USER_ID = Number(import.meta.env.VITE_DEV_VK_USER_ID) || 1000001;
@@ -42,7 +43,7 @@ function getSpeechRecognition() {
 }
 
 export const Practice = ({ id }) => {
-  const routeNavigator = useRouteNavigator();
+  const goBackOrHome = useNavigateBackOrHome();
   const [vkReady, setVkReady] = useState(() => !!getVkUserIdFromLocation());
   const [turns, setTurns] = useState([]);
   const [input, setInput] = useState('');
@@ -51,13 +52,14 @@ export const Practice = ({ id }) => {
   const [notice, setNotice] = useState(null);
   const [snackbar, setSnackbar] = useState(null);
   const [listening, setListening] = useState(false);
+  const [ttsSpeaking, setTtsSpeaking] = useState(false);
   const recRef = useRef(null);
 
   // Определяем vk_user_id для заголовка X-VK-User-Id (как в словаре).
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (getVkUserIdFromLocation()) {
+      if (resolveVkUserId()) {
         setVkReady(true);
         return;
       }
@@ -98,11 +100,9 @@ export const Practice = ({ id }) => {
       setInput('');
       try {
         const history = historyForApi();
-        const s = loadSettings();
         const { echo, corrections, reply } = await practiceApi.postPracticeTurn({
           userText,
           history,
-          tone: s.practiceTone || 'neutral',
         });
         setTurns((prev) => [
           ...prev,
@@ -171,16 +171,21 @@ export const Practice = ({ id }) => {
     }
   }, [listening, loading, submitUserText]);
 
-  const canSpeak = typeof window !== 'undefined' && !!window.speechSynthesis;
   const speakReply = (text) => {
     const s = loadSettings();
-    if (!s.ttsEnabled) return;
-    if (!canSpeak || !text) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-US';
-    u.rate = Number(s.ttsRate) || 0.95;
-    window.speechSynthesis.speak(u);
+    if (!s.ttsEnabled || ttsSpeaking) return;
+    setTtsSpeaking(true);
+    void speakEnglish(text)
+      .catch((e) => {
+        const msg = e?.message || 'Озвучка недоступна';
+        setNotice(msg);
+        setSnackbar(
+          <Snackbar onClose={() => setSnackbar(null)} duration={6500}>
+            {msg}
+          </Snackbar>,
+        );
+      })
+      .finally(() => setTtsSpeaking(false));
   };
 
   const selectedTextOr = (fallback) => {
@@ -226,7 +231,7 @@ export const Practice = ({ id }) => {
 
   return (
     <Panel id={id}>
-      <PanelHeader before={<PanelHeaderBack onClick={() => routeNavigator.back()} />}>Разговорная практика</PanelHeader>
+      <PanelHeader before={<PanelHeaderBack onClick={() => void goBackOrHome()} />}>Разговорная практика</PanelHeader>
 
       {snackbar}
 
@@ -304,10 +309,11 @@ export const Practice = ({ id }) => {
                   size="m"
                   mode="tertiary"
                   style={{ marginTop: 8 }}
-                  disabled={!canSpeak}
+                  loading={ttsSpeaking}
+                  disabled={ttsSpeaking}
                   onClick={() => speakReply(t.reply)}
                 >
-                  Прослушать ответ
+                  {ttsSpeaking ? 'Воспроизведение…' : 'Прослушать ответ'}
                 </Button>
               </Box>
             ))}

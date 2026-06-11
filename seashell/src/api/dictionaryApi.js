@@ -3,7 +3,8 @@
  * Все запросы с заголовком X-VK-User-Id (из URL или fallback после VKWebAppGetUserInfo).
  * База URL: в проде задаётся VITE_API_URL; в dev — относительный `/api` + прокси Vite.
  */
-import { getVkUserIdFromLocation } from '../utils/vkUserId.js';
+import { getVkLaunchParamsFromLocation, getVkUserIdFromLocation } from '../utils/vkUserId.js';
+import { refreshVkLaunchParamsFromBridge } from '../utils/vkSession.js';
 
 /**
  * Прод: VITE_API_URL=https://ИМЯ.beget.app или https://ИМЯ.beget.app/api
@@ -32,7 +33,7 @@ export function setVkUserIdFallback(id) {
   vkUserIdFallback = Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function resolveVkUserId() {
+export function resolveVkUserId() {
   return getVkUserIdFromLocation() ?? vkUserIdFallback;
 }
 
@@ -41,16 +42,18 @@ function headers() {
   if (vkUserId == null) {
     throw new Error('Не удалось определить vk_user_id (нет в URL и не задан fallback)');
   }
+  const lp = getVkLaunchParamsFromLocation();
   return {
     'Content-Type': 'application/json',
     'X-VK-User-Id': String(vkUserId),
+    ...(lp ? { 'X-VK-Launch-Params': lp } : null),
   };
 }
 
 const API_DOWN_HINT =
   'Бэкенд не отвечает (порт 3001). В папке seashell запусти: npm run dev — и не закрывай окно, пока тестируешь.';
 
-async function request(path, init = {}) {
+async function request(path, init = {}, { retriedAuth = false } = {}) {
   let r;
   try {
     r = await fetch(apiUrl(path), {
@@ -63,6 +66,14 @@ async function request(path, init = {}) {
     }
     throw e;
   }
+
+  if (!retriedAuth && r.status === 401) {
+    const t = await r.clone().text();
+    if (/launch params/i.test(t) && (await refreshVkLaunchParamsFromBridge())) {
+      return request(path, init, { retriedAuth: true });
+    }
+  }
+
   return r;
 }
 
@@ -73,6 +84,14 @@ const RESTART_API_HINT =
 function messageFromStatusAndBody(status, text) {
   const raw = String(text ?? '');
   const trimmed = raw.trim();
+  // VK Hosting (S3) иногда отвечает XML AccessDenied, если фронт случайно стучится на /api по origin.
+  if (/^<\?xml/i.test(trimmed) && /<Code>\s*AccessDenied\s*<\/Code>/i.test(trimmed)) {
+    return [
+      'Не удалось обратиться к API: запрос попал в VK Hosting (AccessDenied).',
+      'Это значит, что фронт собран без VITE_API_URL и ходит на /api по текущему домену.',
+      'Нужно пересобрать и задеплоить фронт с VITE_API_URL=https://ВАШ-API-ХОСТ (или .../api).',
+    ].join(' ');
+  }
   if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
     if (status === 404 && /Cannot POST/i.test(trimmed)) {
       return `Маршрут не найден (404). ${RESTART_API_HINT}`;
@@ -81,7 +100,12 @@ function messageFromStatusAndBody(status, text) {
   }
   try {
     const j = JSON.parse(raw);
-    if (j?.error && typeof j.error === 'string') return j.error;
+    if (j?.error && typeof j.error === 'string') {
+      if (status === 401 && /launch params/i.test(j.error)) {
+        return `${j.error} Закрой мини-приложение и открой снова из VK (не по прямой ссылке на pages.vk-apps.com).`;
+      }
+      return j.error;
+    }
   } catch {
     // не JSON
   }
@@ -108,10 +132,71 @@ export async function fetchWords() {
   return r.json();
 }
 
+export async function fetchWordsInSet(setId) {
+  const id = setId != null ? parseInt(String(setId), 10) : NaN;
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error('Invalid setId');
+  }
+  const r = await request(`/words?setId=${encodeURIComponent(String(id))}`);
+  if (!r.ok) throw new Error(await readHttpError(r));
+  return r.json();
+}
+
 export async function fetchWord(wordId) {
   const r = await request(`/words/${wordId}`);
   if (!r.ok) throw new Error(await readHttpError(r));
   return r.json();
+}
+
+export async function fetchSets() {
+  const r = await request('/sets');
+  if (!r.ok) throw new Error(await readHttpError(r));
+  return r.json();
+}
+
+export async function createSet(name) {
+  const n = String(name ?? '').trim().replace(/\s+/g, ' ');
+  const r = await request('/sets', {
+    method: 'POST',
+    body: JSON.stringify({ name: n }),
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(messageFromStatusAndBody(r.status, text));
+  return JSON.parse(text);
+}
+
+export async function renameSet(setId, name) {
+  const id = setId != null ? parseInt(String(setId), 10) : NaN;
+  const n = String(name ?? '').trim().replace(/\s+/g, ' ');
+  if (!Number.isFinite(id) || id <= 0) throw new Error('Invalid setId');
+  const r = await request(`/sets/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name: n }),
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(messageFromStatusAndBody(r.status, text));
+  return JSON.parse(text);
+}
+
+export async function deleteSet(setId) {
+  const id = setId != null ? parseInt(String(setId), 10) : NaN;
+  if (!Number.isFinite(id) || id <= 0) throw new Error('Invalid setId');
+  const r = await request(`/sets/${id}`, { method: 'DELETE' });
+  const text = await r.text();
+  if (!r.ok) throw new Error(messageFromStatusAndBody(r.status, text));
+  return JSON.parse(text);
+}
+
+export async function updateWordSets(wordId, setIds) {
+  const id = wordId != null ? parseInt(String(wordId), 10) : NaN;
+  if (!Number.isFinite(id) || id <= 0) throw new Error('Invalid wordId');
+  const r = await request(`/words/${id}/sets`, {
+    method: 'PUT',
+    body: JSON.stringify({ setIds: Array.isArray(setIds) ? setIds : [] }),
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(messageFromStatusAndBody(r.status, text));
+  return JSON.parse(text);
 }
 
 export async function addWord(word) {
@@ -145,5 +230,3 @@ export async function refreshWordExamples(wordId) {
   }
   return JSON.parse(text);
 }
-
-export { resolveVkUserId };

@@ -37,6 +37,30 @@ yarn run deploy
 
 После чего, вы получите бессрочную ссылку на ваш мини апп.
 
+## Seashell: продакшен перед модерацией VK
+
+**Полная пошаговая инструкция (сервер, Nginx, env, сборка, деплой, иконка, проверки):** [DEPLOY-STEPS.ru.md](./DEPLOY-STEPS.ru.md).
+
+Краткий чеклист ниже — детали в документе по ссылке.
+
+Цель раздела: один проход без догадок «почему API 401/CORS».
+
+1. **Сервер API (отдельно от статики)**  
+   PostgreSQL, HTTPS (обратный прокси + сертификат), проброс порта или `PORT` через переменную.
+
+2. **Переменные бэкенда** — см. шаблон [server/.env.example](./server/.env.example):  
+   `DATABASE_URL`, `GIGACHAT_API_KEY`, **`VK_APP_SECRET`**, **`CORS_ORIGINS`** (обычно `https://vk.com,https://m.vk.com,https://web.vk.com`; при ошибках проверь `Origin` в Network и добавь домен через запятую), `NODE_ENV=production`.
+
+3. **Сборка фронта** — скопируй [.env.production.example](./.env.production.example) в `.env.production`, пропиши **`VITE_API_URL`** своим доменом API, затем из каталога `seashell`:  
+   `npm run build`
+
+4. **Статический хостинг VK** — `vk-hosting-config.json` уже указывает `build`. Команда: `npm run deploy` (понадобится `MINI_APPS_ACCESS_TOKEN` в окружении или при запросе утилиты).  
+   **Пользователям / модерации:** только `npm run deploy:prod` (проверяет prod **200** автоматически). Черновик: `npm run deploy` (stage). Затем `npm run placement:show` → [Размещение](https://dev.vk.com/admin/app-54526886/placement) → **Сохранить**. Правила: [DEPLOY-GUARD.ru.md](./DEPLOY-GUARD.ru.md), срочно: [MODERATION-RUSH.ru.md](./MODERATION-RUSH.ru.md).
+
+5. **Иконка в кабинете приложения VK** — в настройках/модерации загрузи PNG квадрат (часто просят **278×278** и меньшие). Из `public/logo.svg` экспортировать в редакторе или любым rasterizer.
+
+6. **В кабинете VK**: описание приложения, ссылка на политику приватности если требуется формуляром, включённые платформы (мобильный веб и т.д.).
+
 ## 🗂️ Предустановленные библиотеки
 
 Мы подготовили для вас набор пакетов, с которыми вам будет легко начать разрабатывать мини аппы

@@ -2,6 +2,9 @@
 seashell/node_modules/
 seashell/server/node_modules/
 
+# Last deploy URLs (local checklist, do not commit)
+seashell/.deploy-urls.json
+
 # Build output
 seashell/build/
 seashell/dist/
@@ -15,6 +18,8 @@ seashell/server/data/
 .env.*
 !.env.example
 !**/.env.example
+!.env.production.example
+!**/.env.production.example
 
 # Logs
 npm-debug.log*

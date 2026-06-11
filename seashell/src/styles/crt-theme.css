@@ -1,5 +1,6 @@
 /**
- * Ретро-терминал: тёплый янтарь на тёмном фоне (без «игровой» зелёной палитры).
+ * Терминал в духе «тёмной консоли / учебной платформы»: глубокий сине-серый фон,
+ * нейтральный индиго-акцент (без зелени/янтаря), холодные границы.
  * Селекторы внутри .seashell-crt на AppRoot.
  */
 
@@ -8,40 +9,229 @@ body,
 #root {
   min-height: 100%;
   margin: 0;
-  background: #100e0c;
+  background: #0a0e14;
+}
+
+/*
+ * Портал для модалок Seashell (fixed, вне SplitLayout). pointer-events: none — пока слой пустой;
+ * у открытой модалки корень с pointer-events: auto перехватывает клики.
+ */
+.seashell-global-modal-mount {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* Собственный «лист» групп: без VKUI ModalPage / bottom sheet — стабильная вёрстка и скролл. */
+.seashell-wordsets-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
+}
+
+@media (min-width: 768px) {
+  .seashell-wordsets-shell {
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+  }
+}
+
+.seashell-wordsets-shell__backdrop {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: rgba(4, 6, 10, 0.72);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.seashell-wordsets-shell__dialog {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  max-height: min(92dvh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: var(--crt-bg-elev);
+  border: 1px solid var(--crt-border);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.45);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+@media (min-width: 768px) {
+  .seashell-wordsets-shell__dialog {
+    border-radius: 8px;
+    max-height: min(88vh, 620px);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  }
+}
+
+.seashell-wordsets-shell__head {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 6px 52px;
+  border-bottom: 1px solid var(--crt-border);
+  background: var(--crt-bg-elev);
+}
+
+.seashell-wordsets-shell__head .vkuiModalDismissButton__host {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--crt-fg) !important;
+}
+
+.seashell-wordsets-shell__title {
+  margin: 0;
+  text-align: center;
+  color: var(--crt-fg) !important;
+}
+
+/* Подтверждение вместо window.confirm (iOS WebView VK) */
+.seashell-confirm-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+    max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+.seashell-confirm-shell__backdrop {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: rgba(4, 6, 10, 0.78);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.seashell-confirm-shell__dialog {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
+  background: var(--crt-bg-elev);
+  border: 1px solid var(--crt-border);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+}
+
+.seashell-confirm-shell__body {
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Мобильные: боковые и нижние отступы (Android/iOS, m.vk) */
+.seashell-crt .vkuiPanel__host {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.seashell-crt .vkuiPanel__in {
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+}
+
+@media (min-width: 768px) {
+  .seashell-crt .vkuiPanel__in {
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+  }
+}
+
+.seashell-crt .seashell-dict-delete-btn {
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
+.seashell-wordsets-shell__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/*
+ * VKUI вешает .vkui на documentElement — часть кнопок/модалок берёт акцент оттуда.
+ */
+html.vkui {
+  --vkui--color_background_accent_themed: rgba(96, 118, 188, 0.34);
+  --vkui--color_background_accent_themed--hover: rgba(96, 118, 188, 0.48);
+  --vkui--color_background_accent_themed--active: rgba(96, 118, 188, 0.58);
+  --vkui--color_text_contrast_themed: #e6eaf2;
+  --vkui--color_text_accent_themed: #92a6e0;
+  --vkui--color_stroke_accent_themed: rgba(132, 154, 218, 0.38);
 }
 
 .seashell-crt {
-  --crt-bg: #141110;
-  --crt-bg-elev: #1a1714;
-  --crt-fg: #d8c4a8;
-  --crt-fg-dim: #8a7a66;
-  --crt-border: #4a4036;
-  --crt-accent: #a67c32;
-  --crt-accent-text: #1a1410;
-  --crt-accent-hover: #b88d42;
-  --crt-accent-active: #8a6628;
+  --crt-bg: #0c1016;
+  --crt-bg-elev: #101620;
+  --crt-fg: #d1d9e6;
+  --crt-fg-dim: #6e7a90;
+  --crt-border: #232c3a;
+  --crt-accent: #6076bc;
+  --crt-accent-muted: rgba(96, 118, 188, 0.28);
+  --crt-accent-text-on-fill: #e6eaf2;
+  --crt-accent-hover-solid: #7088cc;
+  --crt-accent-active-solid: #4f63a8;
+  --crt-glow: rgba(92, 112, 175, 0.07);
 
-  /* VKUI 7 кнопки красятся через токены на html — иначе primary = «белая» акцентная заливка темы */
-  --vkui--color_background_accent_themed: var(--crt-accent);
-  --vkui--color_background_accent_themed--hover: var(--crt-accent-hover);
-  --vkui--color_background_accent_themed--active: var(--crt-accent-active);
-  --vkui--color_text_contrast_themed: var(--crt-accent-text);
-  --vkui--color_text_accent_themed: #d4b896;
-  --vkui--color_stroke_accent_themed: var(--crt-accent);
-  --vkui--color_background_secondary_alpha: rgba(166, 124, 50, 0.22);
-  --vkui--color_background_secondary_alpha--hover: rgba(166, 124, 50, 0.32);
-  --vkui--color_background_secondary_alpha--active: rgba(166, 124, 50, 0.42);
-  --vkui--color_transparent--hover: rgba(166, 124, 50, 0.12);
-  --vkui--color_transparent--active: rgba(166, 124, 50, 0.2);
+  --vkui--size_border_radius--regular: 0;
+  --vkui--size_border_radius--compact: 0;
+  --vkui--size_border_radius_paper--regular: 2px;
+
+  --vkui--color_background_accent_themed: rgba(96, 118, 188, 0.34);
+  --vkui--color_background_accent_themed--hover: rgba(96, 118, 188, 0.48);
+  --vkui--color_background_accent_themed--active: rgba(96, 118, 188, 0.58);
+  --vkui--color_text_contrast_themed: var(--crt-accent-text-on-fill);
+  --vkui--color_text_accent_themed: #92a6e0;
+  --vkui--color_stroke_accent_themed: rgba(132, 154, 218, 0.38);
+  --vkui--color_background_secondary_alpha: rgba(205, 214, 228, 0.08);
+  --vkui--color_background_secondary_alpha--hover: rgba(205, 214, 228, 0.13);
+  --vkui--color_background_secondary_alpha--active: rgba(205, 214, 228, 0.18);
+  --vkui--color_transparent--hover: rgba(205, 214, 228, 0.06);
+  --vkui--color_transparent--active: rgba(205, 214, 228, 0.1);
 
   min-height: 100%;
-  background: linear-gradient(180deg, #0f0d0b 0%, #161310 50%, #141110 100%);
+  background: radial-gradient(120% 80% at 50% -20%, rgba(70, 95, 120, 0.07), transparent 45%),
+    linear-gradient(180deg, #080b10 0%, #0d1118 38%, #0a0e14 100%);
   color: var(--crt-fg);
-  font-family: Consolas, 'Courier New', Courier, monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', Courier, monospace;
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
-  text-shadow: 0 0 1px rgba(216, 196, 168, 0.2);
+  text-shadow: 0 0 1px rgba(216, 222, 233, 0.12);
 }
 
 .seashell-crt .vkuiSplitLayout__host,
@@ -58,7 +248,7 @@ body,
 .seashell-crt .vkuiPanelHeader {
   background: var(--crt-bg-elev) !important;
   border-bottom: 1px solid var(--crt-border) !important;
-  box-shadow: 0 0 10px rgba(166, 124, 50, 0.06);
+  box-shadow: 0 0 16px var(--crt-glow), inset 0 -1px 0 rgba(70, 85, 110, 0.08);
 }
 
 .seashell-crt .vkuiPanelHeader__content-in,
@@ -73,9 +263,9 @@ body,
 
 .seashell-crt .vkuiInternalGroup--mode-card,
 .seashell-crt .vkuiGroup__modeCard {
-  background: rgba(26, 23, 20, 0.9) !important;
+  background: rgba(12, 16, 22, 0.94) !important;
   border: 1px solid var(--crt-border) !important;
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 .seashell-crt .vkuiHeader,
@@ -106,22 +296,71 @@ body,
   color: var(--crt-fg-dim) !important;
 }
 
-/* Доп. страховка к токенам: граница и спиннер на primary */
+.seashell-crt .vkuiButton__host {
+  border-radius: 0 !important;
+  letter-spacing: 0.02em;
+}
+
 .seashell-crt .vkuiButton__host.vkuiButton__modePrimary {
-  border: 1px solid #7a5a28;
+  color: var(--crt-accent-text-on-fill) !important;
+  border: 1px solid rgba(132, 154, 218, 0.35);
+  background: linear-gradient(
+    180deg,
+    rgba(96, 118, 188, 0.42) 0%,
+    rgba(96, 118, 188, 0.22) 100%
+  ) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   text-shadow: none;
 }
 
+.seashell-crt .vkuiModalPage__host .vkuiButton__host.vkuiButton__modePrimary,
+.seashell-crt .vkuiModalPage__host .vkuiButton__host.vkuiButton__modePrimary.vkuiButton__appearanceAccent {
+  color: var(--crt-accent-text-on-fill) !important;
+  border: 1px solid rgba(132, 154, 218, 0.35);
+  background: linear-gradient(
+    180deg,
+    rgba(96, 118, 188, 0.42) 0%,
+    rgba(96, 118, 188, 0.22) 100%
+  ) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.seashell-crt .vkuiModalPage__host .vkuiButton__host.vkuiButton__modeSecondary {
+  border: 1px solid rgba(205, 214, 228, 0.16);
+  background: rgba(205, 214, 228, 0.07) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.seashell-crt .vkuiModalPage__host .vkuiButton__host.vkuiButton__modeSecondary .vkuiButton__content {
+  color: var(--crt-fg) !important;
+}
+
+.seashell-crt .vkuiButton__host.vkuiButton__modePrimary .vkuiButton__content,
+.seashell-crt .vkuiButton__host.vkuiButton__modePrimary .vkuiButton__in {
+  color: var(--crt-accent-text-on-fill) !important;
+}
+
 .seashell-crt .vkuiButton__host.vkuiButton__modePrimary .vkuiButton__spinner {
-  color: var(--crt-accent-text) !important;
+  color: var(--crt-accent-text-on-fill) !important;
 }
 
 .seashell-crt .vkuiButton__host.vkuiButton__modeSecondary {
-  border: 1px solid var(--crt-border);
+  border: 1px solid rgba(205, 214, 228, 0.16);
+  background: rgba(205, 214, 228, 0.07) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.seashell-crt .vkuiButton__host.vkuiButton__modeSecondary .vkuiButton__content {
+  color: var(--crt-fg) !important;
 }
 
 .seashell-crt .vkuiButton__host.vkuiButton__modeTertiary {
   color: var(--crt-fg-dim) !important;
+  border-radius: 0 !important;
+}
+
+.seashell-crt .vkuiIconButton__host {
+  border-radius: 0 !important;
 }
 
 .seashell-crt .vkuiButton__host.vkuiButton__disabled.vkuiButton__modePrimary {
@@ -131,15 +370,15 @@ body,
 .seashell-crt .vkuiInput,
 .seashell-crt .vkuiTextarea,
 .seashell-crt .vkuiFormField {
-  --vkui--color_field_background: #1a1612;
+  --vkui--color_field_background: #0f141c;
 }
 
 .seashell-crt input,
 .seashell-crt textarea {
-  background: #1a1612 !important;
+  background: #0f141c !important;
   color: var(--crt-fg) !important;
   border-color: var(--crt-border) !important;
-  caret-color: var(--crt-fg);
+  caret-color: var(--crt-accent);
 }
 
 .seashell-crt input::placeholder,
@@ -158,7 +397,55 @@ body,
 }
 
 .seashell-crt .vkuiScreenSpinner {
-  background: rgba(15, 13, 11, 0.82) !important;
+  background: rgba(8, 11, 16, 0.88) !important;
+}
+
+/* Полноэкранная загрузка: seashell + серебряный перелив */
+.seashell-screen-spinner {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 11, 16, 0.88);
+  pointer-events: all;
+}
+
+.seashell-shimmer {
+  font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+  font-size: clamp(2rem, 12vw, 3.2rem);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  background: linear-gradient(
+    90deg,
+    rgba(170, 180, 195, 0.35) 0%,
+    rgba(230, 240, 255, 0.9) 35%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(200, 210, 225, 0.6) 70%,
+    rgba(150, 160, 175, 0.3) 100%
+  );
+  background-size: 250% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: seashell-shimmer-sweep 2.2s linear infinite;
+  white-space: pre;
+}
+
+.seashell-shimmer--static {
+  animation: none;
+  color: var(--crt-fg);
+  background: none;
+}
+
+@keyframes seashell-shimmer-sweep {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
 }
 
 .seashell-crt .vkuiPlaceholder {
@@ -171,11 +458,11 @@ body,
 }
 
 .seashell-crt .vkuiLink {
-  color: #e8c896 !important;
+  color: #8fa8d6 !important;
 }
 
 .seashell-crt .vkuiFormItem__top,
-.seashell-crt [class*='FormItem'] label {
+.seashell-crt .vkuiFormItem__label {
   color: var(--crt-fg-dim) !important;
 }
 
@@ -184,19 +471,29 @@ body,
   border: 1px solid var(--crt-border);
 }
 
-/* Декоративный блок «системный журнал» (справка и т.п.) */
-.seashell-crt .seashell-bootlog {
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--crt-fg-dim);
-  padding: 12px 14px;
-  border: 1px dashed var(--crt-border);
-  background: rgba(0, 0, 0, 0.22);
-  border-radius: 2px;
-  letter-spacing: 0.02em;
+.seashell-crt .seashell-home-tagline {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--crt-border);
+  border-radius: 0;
+  background: linear-gradient(165deg, rgba(96, 118, 188, 0.07), rgba(0, 0, 0, 0.22));
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.22);
 }
 
-.seashell-crt .seashell-bootlog strong {
-  color: var(--crt-fg);
-  font-weight: 600;
+.seashell-crt .seashell-home-tagline__line {
+  display: block;
+  font-size: 12px;
+  line-height: 1.65;
+  letter-spacing: 0.03em;
+  color: var(--crt-fg-dim);
+  font-style: italic;
 }
+
+.seashell-crt .seashell-home-tagline__line--lead {
+  font-style: normal;
+  font-weight: 600;
+  color: #a8b8d9;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+

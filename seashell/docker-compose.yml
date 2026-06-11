@@ -2,10 +2,16 @@
 #   docker compose up --build
 # Перед первым запуском скопируй server/.env.example → server/.env и впиши GIGACHAT_API_KEY.
 # DATABASE_URL для сервиса api задаётся ниже (хост db). Открой: http://localhost:5173  (API: http://localhost:3001)
+#
+# Только Postgres на хосте (для npm run api с Windows без Docker-образа API):
+#   docker compose up -d db
+# В server/.env: DATABASE_URL=postgresql://seashell:seashell@127.0.0.1:5432/seashell
 
 services:
   db:
     image: postgres:16-alpine
+    ports:
+      - '5432:5432'
     environment:
       POSTGRES_USER: seashell
       POSTGRES_PASSWORD: seashell
