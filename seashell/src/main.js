@@ -4,20 +4,20 @@
 import { createRoot } from 'react-dom/client';
 import vkBridge from '@vkontakte/vk-bridge';
 import { AppConfig } from './AppConfig.js';
-import { captureVkLaunchParamsFromLocation } from './utils/vkUserId.js';
+import { preserveInitialLaunchSearch } from './utils/vkUserId.js';
 import { bootstrapVkSession } from './utils/vkSession.js';
 
 async function bootstrap() {
-  captureVkLaunchParamsFromLocation();
-
-  createRoot(document.getElementById('root')).render(<AppConfig />);
-
+  preserveInitialLaunchSearch();
   if (vkBridge.isWebView?.()) {
     vkBridge.send('VKWebAppInit').catch(() => {});
-    void bootstrapVkSession({ skipInit: true });
+    await bootstrapVkSession({ skipInit: true });
   } else {
     vkBridge.send('VKWebAppInit').catch(() => {});
+    await bootstrapVkSession();
   }
+
+  createRoot(document.getElementById('root')).render(<AppConfig />);
 
   if (import.meta.env.MODE === 'development') {
     import('./eruda.js');

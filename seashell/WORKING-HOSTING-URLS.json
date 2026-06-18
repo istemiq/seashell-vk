@@ -1,24 +1,40 @@
 {
   "appId": 54526886,
-  "probedAt": "2026-06-18T07:49:06.680Z",
+  "probedAt": "2026-06-18T09:25:13.228Z",
   "placement": "https://dev.vk.com/admin/app-54526886/placement",
   "notes": [
     "fullyWorking = index.html и главный JS отдают HTTP 200",
     "Для пользователей (prod-поля) нужен prod.fullyWorking",
     "bad/prod-contour-35bb6eb @ 35bb6eb — не деплоить без probe prod JS",
-    "good/prod-no-ads-5ec7ada0148c — важная рабочая версия без рекламы (prod+stage 200)"
+    "good/prod-no-ads-5ec7ada0148c — rollback без рекламы (tag good/prod-no-ads-5ec7ada0148c)",
+    "e2c2a763105a — текущий prod: словарь на mvk OK, баннер в коде (ShowBannerAd), креативы пока не видны"
   ],
   "currentRecommended": {
-    "hash": "5ec7ada0148c",
-    "gitCommit": "768aee0",
-    "gitTag": "good/prod-no-ads-5ec7ada0148c",
-    "noAds": true,
-    "jsFile": "index-Br9YwzMQ.js",
-    "prod": "https://prod-app54526886-5ec7ada0148c.pages-ac.vk-apps.com/index.html",
-    "stage": "https://stage-app54526886-5ec7ada0148c.pages.vk-apps.com/index.html"
+    "hash": "e2c2a763105a",
+    "gitCommit": "fdaf9c5",
+    "jsFile": "index-DmPlwdTw.js",
+    "cssFile": "index-DtrC4Fqd.css",
+    "noAds": false,
+    "adsBannerInCode": true,
+    "adsVisibleInApp": false,
+    "launchParamsFix": true,
+    "prod": "https://prod-app54526886-e2c2a763105a.pages-ac.vk-apps.com/index.html",
+    "stage": "https://stage-app54526886-e2c2a763105a.pages.vk-apps.com/index.html",
+    "rollbackNoAds": {
+      "hash": "5ec7ada0148c",
+      "gitTag": "good/prod-no-ads-5ec7ada0148c",
+      "prod": "https://prod-app54526886-5ec7ada0148c.pages-ac.vk-apps.com/index.html"
+    }
   },
   "working": {
     "prod": [
+      {
+        "hash": "e2c2a763105a",
+        "url": "https://prod-app54526886-e2c2a763105a.pages-ac.vk-apps.com/index.html",
+        "jsFile": "index-DmPlwdTw.js",
+        "cssFile": "index-DtrC4Fqd.css",
+        "notes": "banner+launch-params fix; ads not visible yet"
+      },
       {
         "hash": "5ec7ada0148c",
         "url": "https://prod-app54526886-5ec7ada0148c.pages-ac.vk-apps.com/index.html",
@@ -31,6 +47,12 @@
       }
     ],
     "stage": [
+      {
+        "hash": "e2c2a763105a",
+        "url": "https://stage-app54526886-e2c2a763105a.pages.vk-apps.com/index.html",
+        "jsFile": "index-DmPlwdTw.js",
+        "cssFile": "index-DtrC4Fqd.css"
+      },
       {
         "hash": "25a3c6dd9866",
         "url": "https://stage-app54526886-25a3c6dd9866.pages.vk-apps.com/index.html",

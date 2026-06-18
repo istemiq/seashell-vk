@@ -4,6 +4,7 @@
  * База URL: в проде задаётся VITE_API_URL; в dev — относительный `/api` + прокси Vite.
  */
 import { getVkLaunchParamsFromLocation, getVkUserIdFromLocation } from '../utils/vkUserId.js';
+import { whenVkSessionReady } from '../utils/vkSession.js';
 
 /**
  * Прод: VITE_API_URL=https://ИМЯ.beget.app или https://ИМЯ.beget.app/api
@@ -36,7 +37,8 @@ export function resolveVkUserId() {
   return getVkUserIdFromLocation() ?? vkUserIdFallback;
 }
 
-function headers() {
+async function headers() {
+  await whenVkSessionReady();
   const vkUserId = resolveVkUserId();
   if (vkUserId == null) {
     throw new Error('Не удалось определить vk_user_id (нет в URL и не задан fallback)');
@@ -57,7 +59,7 @@ async function request(path, init = {}) {
   try {
     r = await fetch(apiUrl(path), {
       ...init,
-      headers: { ...headers(), ...init.headers },
+      headers: { ...(await headers()), ...init.headers },
     });
   } catch (e) {
     if (e?.name === 'TypeError') {

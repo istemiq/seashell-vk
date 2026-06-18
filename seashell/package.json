@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "tunnel": "vk-tunnel --http-protocol=http --host=localhost --port=5173",
     "deploy": "vite build && node scripts/vk-deploy.mjs",
-    "deploy:prod": "vite build && node scripts/deploy-prod.mjs",
+    "deploy:prod": "vite build && node scripts/check-production-build.mjs && node scripts/deploy-prod.mjs",
     "verify:hosting": "node scripts/verify-hosting.mjs",
     "placement:show": "node scripts/placement-show.mjs",
     "api": "node server/index.js",

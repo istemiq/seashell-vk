@@ -5,6 +5,30 @@
  */
 const LAUNCH_STORAGE_KEY = 'seashell_vk_launch_qs';
 
+/** Сырой ?search=… один раз при старте (до hash-router), для проверки vk_sign на API. */
+let initialLaunchSearchRaw = '';
+
+function hasLaunchSign(qs) {
+  return qs.includes('sign=') || qs.includes('vk_sign=');
+}
+
+/** Вызвать первой строкой bootstrap() — до await и до Router. */
+export function preserveInitialLaunchSearch() {
+  if (typeof window === 'undefined') return;
+  const search = String(window.location.search || '');
+  if (search.length <= 1) return;
+  const raw = search.startsWith('?') ? search.slice(1) : search;
+  if (raw.includes('vk_user_id=') && hasLaunchSign(raw)) {
+    initialLaunchSearchRaw = raw;
+  }
+}
+
+export function takeInitialLaunchSearchRaw() {
+  const raw = initialLaunchSearchRaw;
+  initialLaunchSearchRaw = '';
+  return raw;
+}
+
 function queryStringFromLocation() {
   if (typeof window === 'undefined') return '';
 
@@ -38,6 +62,16 @@ export function captureVkLaunchParamsFromLocation() {
   const qs = queryStringFromLocation();
   if (!qs || !qs.includes('vk_user_id=')) return;
   storeVkLaunchParamsQueryString(qs);
+}
+
+/** Сбросить кэш launch params (смена аккаунта / перед VKWebAppGetLaunchParams). */
+export function clearStoredVkLaunchParams() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage?.removeItem(LAUNCH_STORAGE_KEY);
+  } catch {
+    // private mode / quota
+  }
 }
 
 /** Сохранить строку launch params (из URL или VKWebAppGetLaunchParams). */

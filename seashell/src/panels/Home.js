@@ -1,8 +1,14 @@
+import { useEffect } from 'react';
 import { Panel, PanelHeader, Header, Group, Cell, Avatar } from '@vkontakte/vkui';
-import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
+import { useActiveVkuiLocation, useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import PropTypes from 'prop-types';
 
 import { SeashellBootlog } from '../components/SeashellBootlog';
+import { DEFAULT_VIEW_PANELS } from '../routes';
+import { hideVkHomeBannerAd, showVkHomeBannerAd } from '../utils/vkHomeBannerAd.js';
+
+/** Не на спиннере: короткая пауза после отрисовки главной. */
+const HOME_BANNER_DELAY_MS = 800;
 
 /** Короткие тезисы (EN): естественные формулировки для носителя */
 const HOME_TAGLINES_EN = [
@@ -15,9 +21,27 @@ const HOME_TAGLINES_EN = [
 export const Home = ({ id, fetchedUser }) => {
   const { photo_200, city, first_name, last_name } = { ...fetchedUser };
   const routeNavigator = useRouteNavigator();
+  const { panel: activePanel } = useActiveVkuiLocation();
+  const isHomeActive = activePanel === DEFAULT_VIEW_PANELS.HOME;
   const userDisplayName = fetchedUser
     ? [first_name, last_name].filter(Boolean).join(' ').trim()
     : '';
+
+  useEffect(() => {
+    if (!isHomeActive) {
+      hideVkHomeBannerAd();
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      void showVkHomeBannerAd();
+    }, HOME_BANNER_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+      hideVkHomeBannerAd();
+    };
+  }, [isHomeActive]);
 
   return (
     <Panel id={id}>
