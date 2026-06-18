@@ -1,0 +1,357 @@
+{
+  "appId": 54526886,
+  "probedAt": "2026-06-18T07:49:06.680Z",
+  "placement": "https://dev.vk.com/admin/app-54526886/placement",
+  "notes": [
+    "fullyWorking = index.html и главный JS отдают HTTP 200",
+    "Для пользователей (prod-поля) нужен prod.fullyWorking",
+    "bad/prod-contour-35bb6eb @ 35bb6eb — не деплоить без probe prod JS",
+    "good/prod-no-ads-5ec7ada0148c — важная рабочая версия без рекламы (prod+stage 200)"
+  ],
+  "currentRecommended": {
+    "hash": "5ec7ada0148c",
+    "gitCommit": "2a5e65c",
+    "gitTag": "good/prod-no-ads-5ec7ada0148c",
+    "noAds": true,
+    "jsFile": "index-Br9YwzMQ.js",
+    "prod": "https://prod-app54526886-5ec7ada0148c.pages-ac.vk-apps.com/index.html",
+    "stage": "https://stage-app54526886-5ec7ada0148c.pages.vk-apps.com/index.html"
+  },
+  "working": {
+    "prod": [
+      {
+        "hash": "5ec7ada0148c",
+        "url": "https://prod-app54526886-5ec7ada0148c.pages-ac.vk-apps.com/index.html",
+        "jsFile": "index-Br9YwzMQ.js"
+      },
+      {
+        "hash": "c0bcdfbd8d0b",
+        "url": "https://prod-app54526886-c0bcdfbd8d0b.pages-ac.vk-apps.com/index.html",
+        "jsFile": "index-B3VDmg2I.js"
+      }
+    ],
+    "stage": [
+      {
+        "hash": "25a3c6dd9866",
+        "url": "https://stage-app54526886-25a3c6dd9866.pages.vk-apps.com/index.html",
+        "jsFile": "index-B3VDmg2I.js"
+      },
+      {
+        "hash": "2f620630a7e3",
+        "url": "https://stage-app54526886-2f620630a7e3.pages.vk-apps.com/index.html",
+        "jsFile": "index-65BF1sgl.js"
+      },
+      {
+        "hash": "2fccaaa19365",
+        "url": "https://stage-app54526886-2fccaaa19365.pages.vk-apps.com/index.html",
+        "jsFile": "index-BkAKUaur.js"
+      },
+      {
+        "hash": "5ec7ada0148c",
+        "url": "https://stage-app54526886-5ec7ada0148c.pages.vk-apps.com/index.html",
+        "jsFile": "index-Br9YwzMQ.js"
+      },
+      {
+        "hash": "602fa78463c2",
+        "url": "https://stage-app54526886-602fa78463c2.pages.vk-apps.com/index.html",
+        "jsFile": "index-65BF1sgl.js"
+      },
+      {
+        "hash": "615b81138886",
+        "url": "https://stage-app54526886-615b81138886.pages.vk-apps.com/index.html",
+        "jsFile": "index-PywYpyV4.js"
+      },
+      {
+        "hash": "7bc841a1c1e2",
+        "url": "https://stage-app54526886-7bc841a1c1e2.pages.vk-apps.com/index.html",
+        "jsFile": "index-65BF1sgl.js"
+      },
+      {
+        "hash": "92679b745307",
+        "url": "https://stage-app54526886-92679b745307.pages.vk-apps.com/index.html",
+        "jsFile": "index-65BF1sgl.js"
+      },
+      {
+        "hash": "a50005caed51",
+        "url": "https://stage-app54526886-a50005caed51.pages.vk-apps.com/index.html",
+        "jsFile": "index-65BF1sgl.js"
+      },
+      {
+        "hash": "a7f1d163afa3",
+        "url": "https://stage-app54526886-a7f1d163afa3.pages.vk-apps.com/index.html",
+        "jsFile": "index-65BF1sgl.js"
+      },
+      {
+        "hash": "c0bcdfbd8d0b",
+        "url": "https://stage-app54526886-c0bcdfbd8d0b.pages.vk-apps.com/index.html",
+        "jsFile": "index-B3VDmg2I.js"
+      },
+      {
+        "hash": "e1f0e4dde17f",
+        "url": "https://stage-app54526886-e1f0e4dde17f.pages.vk-apps.com/index.html",
+        "jsFile": "index-65BF1sgl.js"
+      },
+      {
+        "hash": "f8fb387e380f",
+        "url": "https://stage-app54526886-f8fb387e380f.pages.vk-apps.com/index.html",
+        "jsFile": "index-65BF1sgl.js"
+      }
+    ]
+  },
+  "partial": {
+    "prodIndexOnlyJsBlocked": [
+      {
+        "hash": "25a3c6dd9866",
+        "url": "https://prod-app54526886-25a3c6dd9866.pages-ac.vk-apps.com/index.html",
+        "jsFile": "index-B3VDmg2I.js",
+        "jsHttp": "403"
+      },
+      {
+        "hash": "2f620630a7e3",
+        "url": "https://prod-app54526886-2f620630a7e3.pages-ac.vk-apps.com/index.html",
+        "jsFile": "index-65BF1sgl.js",
+        "jsHttp": "403"
+      }
+    ]
+  },
+  "all": [
+    {
+      "hash": "25a3c6dd9866",
+      "stage": {
+        "url": "https://stage-app54526886-25a3c6dd9866.pages.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-B3VDmg2I.js",
+        "js": "200",
+        "fullyWorking": true
+      },
+      "prod": {
+        "url": "https://prod-app54526886-25a3c6dd9866.pages-ac.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-B3VDmg2I.js",
+        "js": "403",
+        "fullyWorking": false
+      }
+    },
+    {
+      "hash": "2f620630a7e3",
+      "stage": {
+        "url": "https://stage-app54526886-2f620630a7e3.pages.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-65BF1sgl.js",
+        "js": "200",
+        "fullyWorking": true
+      },
+      "prod": {
+        "url": "https://prod-app54526886-2f620630a7e3.pages-ac.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-65BF1sgl.js",
+        "js": "403",
+        "fullyWorking": false
+      }
+    },
+    {
+      "hash": "2fccaaa19365",
+      "stage": {
+        "url": "https://stage-app54526886-2fccaaa19365.pages.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-BkAKUaur.js",
+        "js": "200",
+        "fullyWorking": true
+      },
+      "prod": {
+        "url": "https://prod-app54526886-2fccaaa19365.pages-ac.vk-apps.com/index.html",
+        "index": "403",
+        "jsFile": null,
+        "js": null,
+        "fullyWorking": false
+      }
+    },
+    {
+      "hash": "5ec7ada0148c",
+      "stage": {
+        "url": "https://stage-app54526886-5ec7ada0148c.pages.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-Br9YwzMQ.js",
+        "js": "200",
+        "fullyWorking": true
+      },
+      "prod": {
+        "url": "https://prod-app54526886-5ec7ada0148c.pages-ac.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-Br9YwzMQ.js",
+        "js": "200",
+        "fullyWorking": true
+      }
+    },
+    {
+      "hash": "602fa78463c2",
+      "stage": {
+        "url": "https://stage-app54526886-602fa78463c2.pages.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-65BF1sgl.js",
+        "js": "200",
+        "fullyWorking": true
+      },
+      "prod": {
+        "url": "https://prod-app54526886-602fa78463c2.pages-ac.vk-apps.com/index.html",
+        "index": "403",
+        "jsFile": null,
+        "js": null,
+        "fullyWorking": false
+      }
+    },
+    {
+      "hash": "615b81138886",
+      "stage": {
+        "url": "https://stage-app54526886-615b81138886.pages.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-PywYpyV4.js",
+        "js": "200",
+        "fullyWorking": true
+      },
+      "prod": {
+        "url": "https://prod-app54526886-615b81138886.pages-ac.vk-apps.com/index.html",
+        "index": "403",
+        "jsFile": null,
+        "js": null,
+        "fullyWorking": false
+      }
+    },
+    {
+      "hash": "7bc841a1c1e2",
+      "stage": {
+        "url": "https://stage-app54526886-7bc841a1c1e2.pages.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-65BF1sgl.js",
+        "js": "200",
+        "fullyWorking": true
+      },
+      "prod": {
+        "url": "https://prod-app54526886-7bc841a1c1e2.pages-ac.vk-apps.com/index.html",
+        "index": "403",
+        "jsFile": null,
+        "js": null,
+        "fullyWorking": false
+      }
+    },
+    {
+      "hash": "92679b745307",
+      "stage": {
+        "url": "https://stage-app54526886-92679b745307.pages.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-65BF1sgl.js",
+        "js": "200",
+        "fullyWorking": true
+      },
+      "prod": {
+        "url": "https://prod-app54526886-92679b745307.pages-ac.vk-apps.com/index.html",
+        "index": "403",
+        "jsFile": null,
+        "js": null,
+        "fullyWorking": false
+      }
+    },
+    {
+      "hash": "a50005caed51",
+      "stage": {
+        "url": "https://stage-app54526886-a50005caed51.pages.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-65BF1sgl.js",
+        "js": "200",
+        "fullyWorking": true
+      },
+      "prod": {
+        "url": "https://prod-app54526886-a50005caed51.pages-ac.vk-apps.com/index.html",
+        "index": "403",
+        "jsFile": null,
+        "js": null,
+        "fullyWorking": false
+      }
+    },
+    {
+      "hash": "a7f1d163afa3",
+      "stage": {
+        "url": "https://stage-app54526886-a7f1d163afa3.pages.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-65BF1sgl.js",
+        "js": "200",
+        "fullyWorking": true
+      },
+      "prod": {
+        "url": "https://prod-app54526886-a7f1d163afa3.pages-ac.vk-apps.com/index.html",
+        "index": "403",
+        "jsFile": null,
+        "js": null,
+        "fullyWorking": false
+      }
+    },
+    {
+      "hash": "c0bcdfbd8d0b",
+      "stage": {
+        "url": "https://stage-app54526886-c0bcdfbd8d0b.pages.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-B3VDmg2I.js",
+        "js": "200",
+        "fullyWorking": true
+      },
+      "prod": {
+        "url": "https://prod-app54526886-c0bcdfbd8d0b.pages-ac.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-B3VDmg2I.js",
+        "js": "200",
+        "fullyWorking": true
+      }
+    },
+    {
+      "hash": "df42cab19d6e",
+      "stage": {
+        "url": "https://stage-app54526886-df42cab19d6e.pages.vk-apps.com/index.html",
+        "index": "403",
+        "jsFile": null,
+        "js": null,
+        "fullyWorking": false
+      },
+      "prod": {
+        "url": "https://prod-app54526886-df42cab19d6e.pages-ac.vk-apps.com/index.html",
+        "index": "403",
+        "jsFile": null,
+        "js": null,
+        "fullyWorking": false
+      }
+    },
+    {
+      "hash": "e1f0e4dde17f",
+      "stage": {
+        "url": "https://stage-app54526886-e1f0e4dde17f.pages.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-65BF1sgl.js",
+        "js": "200",
+        "fullyWorking": true
+      },
+      "prod": {
+        "url": "https://prod-app54526886-e1f0e4dde17f.pages-ac.vk-apps.com/index.html",
+        "index": "403",
+        "jsFile": null,
+        "js": null,
+        "fullyWorking": false
+      }
+    },
+    {
+      "hash": "f8fb387e380f",
+      "stage": {
+        "url": "https://stage-app54526886-f8fb387e380f.pages.vk-apps.com/index.html",
+        "index": "200",
+        "jsFile": "index-65BF1sgl.js",
+        "js": "200",
+        "fullyWorking": true
+      },
+      "prod": {
+        "url": "https://prod-app54526886-f8fb387e380f.pages-ac.vk-apps.com/index.html",
+        "index": "403",
+        "jsFile": null,
+        "js": null,
+        "fullyWorking": false
+      }
+    }
+  ]
+}

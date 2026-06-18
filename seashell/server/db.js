@@ -75,6 +75,23 @@ export async function initDb() {
   await pool.query(`ALTER TABLE words ADD COLUMN IF NOT EXISTS verb_usage TEXT`);
 
   await pool.query('DELETE FROM examples WHERE idx >= $1', [WORD_EXAMPLE_COUNT]);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS dictionary_generation_cache (
+    cache_key TEXT PRIMARY KEY,
+    request_word TEXT NOT NULL,
+    headword_en TEXT NOT NULL,
+    model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    example_count INTEGER NOT NULL,
+    payload JSONB NOT NULL,
+    created_at BIGINT NOT NULL,
+    last_used_at BIGINT NOT NULL,
+    use_count INTEGER NOT NULL DEFAULT 0
+  )`);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_dictionary_generation_cache_request
+     ON dictionary_generation_cache (LOWER(request_word), model, prompt_version, example_count)`,
+  );
 }
 
 function parseVerbUsageColumn(raw) {
@@ -91,6 +108,119 @@ function parseVerbUsageColumn(raw) {
 function serializeVerbUsage(verbUsage) {
   const normalized = normalizeVerbUsage(verbUsage);
   return normalized.length === 3 ? JSON.stringify(normalized) : null;
+}
+
+function normalizeCacheWord(word) {
+  return String(word ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function dictionaryCacheKey({ requestWord, model, promptVersion, exampleCount = WORD_EXAMPLE_COUNT }) {
+  return [
+    normalizeCacheWord(requestWord),
+    String(model || 'GigaChat').trim(),
+    String(promptVersion || 'v1').trim(),
+    String(exampleCount),
+  ].join('\u001f');
+}
+
+function payloadFromStoredGeneration(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const headwordEn = String(raw.headwordEn ?? raw.headword_en ?? '').trim().replace(/\s+/g, ' ');
+  const examples = Array.isArray(raw.examples) ? raw.examples : [];
+  if (!headwordEn || examples.length < WORD_EXAMPLE_COUNT) return null;
+  return {
+    glossRu: typeof raw.glossRu === 'string' ? raw.glossRu : raw.gloss_ru ?? null,
+    glossNoteRu: typeof raw.glossNoteRu === 'string' ? raw.glossNoteRu : raw.gloss_note_ru ?? null,
+    examples: examples.slice(0, WORD_EXAMPLE_COUNT),
+    headwordEn,
+    verbUsage: normalizeVerbUsage(raw.verbUsage ?? raw.verb_usage ?? []),
+  };
+}
+
+function payloadFromWordRow(word, examples) {
+  if (!word || !Array.isArray(examples) || examples.length < WORD_EXAMPLE_COUNT) return null;
+  return {
+    glossRu: word.gloss_ru ?? null,
+    glossNoteRu: word.gloss_note_ru ?? null,
+    examples: examples.slice(0, WORD_EXAMPLE_COUNT).map((ex) => ({
+      text: ex.text,
+      translation: ex.translation ?? null,
+      noteRu: ex.note_ru ?? null,
+    })),
+    headwordEn: String(word.word ?? '').trim().replace(/\s+/g, ' '),
+    verbUsage: parseVerbUsageColumn(word.verb_usage),
+  };
+}
+
+export function dictionaryGenerationCacheMeta() {
+  return {
+    model: String(process.env.GIGACHAT_MODEL_NAME || 'GigaChat').trim() || 'GigaChat',
+    promptVersion: String(process.env.GIGACHAT_DICTIONARY_CACHE_VERSION || 'v1').trim() || 'v1',
+    exampleCount: WORD_EXAMPLE_COUNT,
+  };
+}
+
+export async function getCachedWordGeneration(requestWord, meta = dictionaryGenerationCacheMeta()) {
+  const key = dictionaryCacheKey({ requestWord, ...meta });
+  const { rows } = await pool.query(
+    `UPDATE dictionary_generation_cache
+     SET last_used_at = $2, use_count = use_count + 1
+     WHERE cache_key = $1
+     RETURNING payload`,
+    [key, Date.now()],
+  );
+  return payloadFromStoredGeneration(rows[0]?.payload);
+}
+
+export async function saveCachedWordGeneration(requestWord, payload, meta = dictionaryGenerationCacheMeta()) {
+  const normalized = payloadFromStoredGeneration(payload);
+  if (!normalized) return null;
+  const now = Date.now();
+  const key = dictionaryCacheKey({ requestWord, ...meta });
+  await pool.query(
+    `INSERT INTO dictionary_generation_cache
+      (cache_key, request_word, headword_en, model, prompt_version, example_count, payload, created_at, last_used_at, use_count)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $8, 0)
+     ON CONFLICT (cache_key) DO UPDATE SET
+       headword_en = EXCLUDED.headword_en,
+       payload = EXCLUDED.payload,
+       last_used_at = EXCLUDED.last_used_at`,
+    [
+      key,
+      normalizeCacheWord(requestWord),
+      normalized.headwordEn,
+      meta.model,
+      meta.promptVersion,
+      meta.exampleCount,
+      JSON.stringify(normalized),
+      now,
+    ],
+  );
+  return normalized;
+}
+
+export async function findReusableWordGeneration(wordNorm) {
+  const normalized = normalizeCacheWord(wordNorm);
+  if (!normalized) return null;
+  const { rows: wordRows } = await pool.query(
+    `SELECT id, word, gloss_ru, gloss_note_ru, verb_usage
+     FROM words
+     WHERE LOWER(word) = LOWER($1)
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [normalized],
+  );
+  const word = wordRows[0];
+  if (!word) return null;
+
+  const { rows: examples } = await pool.query(
+    'SELECT idx, text, translation, note_ru FROM examples WHERE word_id = $1 ORDER BY idx ASC LIMIT $2',
+    [word.id, WORD_EXAMPLE_COUNT],
+  );
+  return payloadFromWordRow(word, examples);
 }
 
 /** Разбор ответа GigaChat: либо массив примеров, либо объект { glossRu, examples }. */

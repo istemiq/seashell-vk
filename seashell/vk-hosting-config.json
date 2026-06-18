@@ -2,7 +2,7 @@
   "static_path": "build",
   "app_id": 54526886,
   "noprompt": true,
-  "update_prod": 1,
+  "update_prod": 0,
   "update_dev": 1,
   "endpoints": {
     "mobile": "index.html",

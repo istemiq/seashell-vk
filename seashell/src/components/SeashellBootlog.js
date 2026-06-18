@@ -3,15 +3,12 @@ import { useEffect, useMemo, useState } from 'react';
 
 const REST_LINES = [
   { t: 'Интерфейс … готов', ok: true },
-  { t: 'Подсистема «Словарь» … в режиме ожидания', ok: true },
-  { t: 'Подсистема «Практика» … в режиме ожидания', ok: true },
-  { t: 'Память сессии … зарезервирована (0 КБ, условно)', ok: true },
   { t: 'Состояние: готов к работе', ok: true },
 ];
 
-const CHAR_MS = 14;
-const LINE_PAUSE_MS = 220;
-const CYCLE_PAUSE_MS = 1800;
+const CHAR_MS = 16;
+const LINE_PAUSE_MS = 280;
+const CYCLE_PAUSE_MS = 4200;
 
 function prefersReducedMotion() {
   if (typeof window === 'undefined') return true;

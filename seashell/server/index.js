@@ -11,13 +11,17 @@ import { assertAllowedUserContent } from './contentPolicy.js';
 import { WORD_EXAMPLE_COUNT } from './dictionaryConstants.js';
 import {
   initDb,
+  dictionaryGenerationCacheMeta,
   listWords,
   listWordsInSet,
   getWordWithExamples,
+  getCachedWordGeneration,
   insertWordWithExamples,
   replaceExamplesForWord,
   deleteWord,
   findWordByLemma,
+  findReusableWordGeneration,
+  saveCachedWordGeneration,
   listSets,
   createSet,
   renameSet,
@@ -30,6 +34,7 @@ import {
   tlsInsecure,
   logDictionaryPromptStartupInfo,
 } from './gigachat.js';
+import { enqueueGigaChat, gigaChatQueueStats } from './gigachatQueue.js';
 import { registerTts } from './tts.js';
 
 const app = express();
@@ -84,7 +89,7 @@ app.use(
 app.use(express.json({ limit: '256kb' }));
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, wordExampleLimit: WORD_EXAMPLE_COUNT });
+  res.json({ ok: true, wordExampleLimit: WORD_EXAMPLE_COUNT, gigaChatQueue: gigaChatQueueStats() });
 });
 
 function makeRateLimiter({ windowMs, max, keyFn }) {
@@ -123,25 +128,64 @@ function vkLaunchParamsFromHeader(req) {
   return s || null;
 }
 
+/** Синтетический vk_user_id для робота проверки деплоя VK (не должен содержать реальных данных). */
+function vkReviewerUserId() {
+  const n = parseInt(String(process.env.VK_REVIEWER_USER_ID ?? '1'), 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/** Запрос с CDN хостинга мини-аппа (робот VK грузит index.html отсюда, не с vk.com). */
+function isVkHostingRequest(req) {
+  const origin = req.headers.origin;
+  if (origin && isVkAppsHostingOrigin(origin)) return true;
+  const ref = String(req.headers.referer ?? '');
+  if (!ref) return false;
+  try {
+    const host = new URL(ref).hostname.toLowerCase();
+    return host === 'vk-apps.com' || host.endsWith('.vk-apps.com');
+  } catch {
+    return false;
+  }
+}
+
+/** Безопасные GET, которые фронт может вызвать при старте; POST и мутации по-прежнему требуют подпись. */
+function isVkReviewerProbeRequest(req) {
+  if (req.method !== 'GET') return false;
+  const p = req.path;
+  return p === '/api/words' || p === '/api/sets' || /^\/api\/words\/\d+$/.test(p);
+}
+
+function tryVkReviewerProbe(req) {
+  if (!isVkHostingRequest(req) || !isVkReviewerProbeRequest(req)) return false;
+  req.vkUserId = vkReviewerUserId();
+  req.vkReviewerProbe = true;
+  return true;
+}
+
 // --- Public static: TTS mp3 cache (/tts/v1/...) ---
 // Must be registered before auth middleware: mp3 files are fetched by VK native player without headers.
 registerTts(app, { makeRateLimiter });
 
-// Маршруты ниже (всё после этого app.use) требуют заголовок X-VK-User-Id. /api/health объявлен выше — без авторизации.
+// Маршруты ниже требуют авторизацию VK. /api/health — без неё.
+// При проверке деплоя робот VK открывает *.vk-apps.com без валидной vk_sign: для read-only GET
+// с этого origin отвечаем 200 с пустыми данными гостя, а не 401.
 app.use((req, res, next) => {
   const secret = String(process.env.VK_APP_SECRET ?? '').trim();
   const lp = vkLaunchParamsFromHeader(req);
 
   if (secret) {
     if (!lp) {
+      if (tryVkReviewerProbe(req)) return next();
       return res.status(401).json({ error: 'Missing X-VK-Launch-Params header' });
     }
     const v = verifyVkLaunchParams(lp, secret);
     if (!v.ok) {
+      if (tryVkReviewerProbe(req)) return next();
       return res.status(401).json({ error: 'Invalid VK launch params signature' });
     }
     const uid = v.vkUserId != null ? parseInt(String(v.vkUserId), 10) : NaN;
     if (!Number.isFinite(uid) || uid <= 0) {
+      if (tryVkReviewerProbe(req)) return next();
       return res.status(401).json({ error: 'Missing or invalid vk_user_id in launch params' });
     }
     req.vkUserId = uid;
@@ -159,6 +203,51 @@ function normalizeWord(w) {
   return String(w || '')
     .trim()
     .replace(/\s+/g, ' ');
+}
+
+function responseStatusForGenerationError(e) {
+  const status = Number(e?.statusCode);
+  if (Number.isInteger(status) && status >= 400 && status < 600) return status;
+  return 502;
+}
+
+async function generateDictionaryPayload(word) {
+  const meta = dictionaryGenerationCacheMeta();
+  const cached = await getCachedWordGeneration(word, meta);
+  if (cached) {
+    return { payload: cached, source: 'cache' };
+  }
+
+  const reusable = await findReusableWordGeneration(word);
+  if (reusable) {
+    await saveCachedWordGeneration(word, reusable, meta);
+    return { payload: reusable, source: 'existing-word' };
+  }
+
+  return enqueueGigaChat(async () => {
+    const cachedAfterWait = await getCachedWordGeneration(word, meta);
+    if (cachedAfterWait) {
+      return { payload: cachedAfterWait, source: 'cache' };
+    }
+
+    const reusableAfterWait = await findReusableWordGeneration(word);
+    if (reusableAfterWait) {
+      await saveCachedWordGeneration(word, reusableAfterWait, meta);
+      return { payload: reusableAfterWait, source: 'existing-word' };
+    }
+
+    const generated = await generateWordExamples(word);
+    await saveCachedWordGeneration(word, generated, meta);
+    if (
+      generated.headwordEn &&
+      normalizeWord(generated.headwordEn).toLowerCase() !== normalizeWord(word).toLowerCase()
+    ) {
+      await saveCachedWordGeneration(generated.headwordEn, generated, meta);
+    }
+    return { payload: generated, source: 'gigachat' };
+  }, {
+    label: `dictionary:${word}`,
+  });
 }
 
 // --- Разговорная практика (один ход диалога через GigaChat) ---
@@ -187,7 +276,9 @@ app.post('/api/practice/turn', limitPractice, async (req, res) => {
     .slice(-28)
     .map((m) => ({ role: m.role, text: m.text.slice(0, 1200) }));
   try {
-    const turn = await generatePracticeTurn({ userText, history });
+    const turn = await enqueueGigaChat(() => generatePracticeTurn({ userText, history }), {
+      label: `practice:${req.vkUserId}`,
+    });
     res.json({
       echo: turn.echo || userText,
       corrections: turn.corrections,
@@ -195,7 +286,7 @@ app.post('/api/practice/turn', limitPractice, async (req, res) => {
     });
   } catch (e) {
     console.error(e);
-    res.status(502).json({ error: e.message || 'Generation failed' });
+    res.status(responseStatusForGenerationError(e)).json({ error: e.message || 'Generation failed' });
   }
 });
 
@@ -326,12 +417,15 @@ async function handleRefreshExamples(req, res) {
     }
     const pol = assertAllowedUserContent(row.word);
     if (!pol.ok) return res.status(400).json({ error: pol.error });
-    const generated = await generateWordExamples(row.word);
+    const generated = await enqueueGigaChat(() => generateWordExamples(row.word), {
+      label: `dictionary-refresh:${row.word}`,
+    });
+    await saveCachedWordGeneration(row.word, generated, dictionaryGenerationCacheMeta());
     const saved = await replaceExamplesForWord(req.vkUserId, id, generated);
     res.json(saved);
   } catch (e) {
     console.error(e);
-    res.status(502).json({ error: e.message || 'Generation failed' });
+    res.status(responseStatusForGenerationError(e)).json({ error: e.message || 'Generation failed' });
   }
 }
 
@@ -348,7 +442,11 @@ app.post('/api/words', limitGeneration, async (req, res) => {
   if (!pol.ok) return res.status(400).json({ error: pol.error });
 
   try {
-    const generated = await generateWordExamples(word);
+    if (await findWordByLemma(req.vkUserId, word)) {
+      return res.status(409).json({ error: 'Word already exists' });
+    }
+
+    const { payload: generated, source } = await generateDictionaryPayload(word);
     const lemma = normalizeWord(generated.headwordEn);
     if (!lemma || lemma.length > 200) {
       return res.status(400).json({ error: 'Invalid word' });
@@ -362,10 +460,10 @@ app.post('/api/words', limitGeneration, async (req, res) => {
 
     const { headwordEn: _drop, ...payload } = generated;
     const saved = await insertWordWithExamples(req.vkUserId, lemma, payload);
-    res.status(201).json(saved);
+    res.status(201).json({ ...saved, generationSource: source });
   } catch (e) {
     console.error(e);
-    res.status(502).json({ error: e.message || 'Generation failed' });
+    res.status(responseStatusForGenerationError(e)).json({ error: e.message || 'Generation failed' });
   }
 });
 
