@@ -1,0 +1,63 @@
+{
+  "headwordEn": "go",
+  "glossRu": "go [ɡəʊ] — 가다, 이동하다; 떠나다; 중립; BrE/AmE",
+  "verbUsage": [
+    {
+      "label": "현재 (go)",
+      "text": "I go to work by bus.",
+      "translation": "나는 버스로 출근해요. — 중립; BrE/AmE"
+    },
+    {
+      "label": "과거 (went)",
+      "text": "She went home early yesterday.",
+      "translation": "그녀는 어제 일찍 집에 갔어요. — 중립; BrE/AmE"
+    },
+    {
+      "label": "과거분사 (gone)",
+      "text": "He has gone abroad for a month.",
+      "translation": "그는 한 달 동안 해외에 갔어요. — 중립; BrE/AmE"
+    }
+  ],
+  "examples": [
+    {
+      "text": "Let's go before it rains.",
+      "translation": "비 오기 전에 가자. — 구어; BrE/AmE"
+    },
+    {
+      "text": "Where did you go last weekend?",
+      "translation": "지난 주말에 어디 갔어요? — 중립; BrE/AmE"
+    },
+    {
+      "text": "The milk has gone bad.",
+      "translation": "우유가 상했어요. — 구어; BrE/AmE"
+    },
+    {
+      "text": "Time goes quickly.",
+      "translation": "시간이 빨리 가요. — 중립; BrE/AmE"
+    },
+    {
+      "text": "We need to go now.",
+      "translation": "지금 가야 해요. — 중립; BrE/AmE"
+    },
+    {
+      "text": "She went quiet when he arrived.",
+      "translation": "그가 도착하자 그녀는 조용해졌어요. — 중립; BrE/AmE"
+    },
+    {
+      "text": "He's gone to pick up the kids.",
+      "translation": "그는 아이들을 데리러 갔어요. — 중립; BrE/AmE"
+    },
+    {
+      "text": "How's it going?",
+      "translation": "잘 지내요? — 구어; BrE/AmE"
+    },
+    {
+      "text": "Don't go there alone at night.",
+      "translation": "밤에 혼자 거기 가지 마세요. — 중립; BrE/AmE"
+    },
+    {
+      "text": "Everything went well, thanks.",
+      "translation": "모든 게 잘 됐어요, 고마워요. — 중립; BrE/AmE"
+    }
+  ]
+}

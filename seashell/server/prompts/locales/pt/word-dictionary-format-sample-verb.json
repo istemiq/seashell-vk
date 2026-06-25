@@ -1,0 +1,63 @@
+{
+  "headwordEn": "go",
+  "glossRu": "go [ɡəʊ] — ir, deslocar-se; partir; neutro; BrE/AmE",
+  "verbUsage": [
+    {
+      "label": "pres. (go)",
+      "text": "I go to work by bus.",
+      "translation": "Vou ao trabalho de ônibus. — neutro; BrE/AmE"
+    },
+    {
+      "label": "pret. (went)",
+      "text": "She went home early yesterday.",
+      "translation": "Ela foi para casa cedo ontem. — neutro; BrE/AmE"
+    },
+    {
+      "label": "part. (gone)",
+      "text": "He has gone abroad for a month.",
+      "translation": "Ele foi para o exterior por um mês. — neutro; BrE/AmE"
+    }
+  ],
+  "examples": [
+    {
+      "text": "Let's go before it rains.",
+      "translation": "Vamos antes que chova. — informal; BrE/AmE"
+    },
+    {
+      "text": "Where did you go last weekend?",
+      "translation": "Onde você foi no fim de semana passado? — neutro; BrE/AmE"
+    },
+    {
+      "text": "The milk has gone bad.",
+      "translation": "O leite estragou. — informal; BrE/AmE"
+    },
+    {
+      "text": "Time goes quickly.",
+      "translation": "O tempo passa rápido. — neutro; BrE/AmE"
+    },
+    {
+      "text": "We need to go now.",
+      "translation": "Precisamos ir agora. — neutro; BrE/AmE"
+    },
+    {
+      "text": "She went quiet when he arrived.",
+      "translation": "Ela ficou quieta quando ele chegou. — neutro; BrE/AmE"
+    },
+    {
+      "text": "He's gone to pick up the kids.",
+      "translation": "Ele foi buscar as crianças. — neutro; BrE/AmE"
+    },
+    {
+      "text": "How's it going?",
+      "translation": "Como vai? — informal; BrE/AmE"
+    },
+    {
+      "text": "Don't go there alone at night.",
+      "translation": "Não vá lá sozinho à noite. — neutro; BrE/AmE"
+    },
+    {
+      "text": "Everything went well, thanks.",
+      "translation": "Tudo correu bem, obrigado. — neutro; BrE/AmE"
+    }
+  ]
+}

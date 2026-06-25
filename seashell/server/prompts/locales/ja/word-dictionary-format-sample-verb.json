@@ -1,0 +1,63 @@
+{
+  "headwordEn": "go",
+  "glossRu": "go [ɡəʊ] — 行く、移動する；出発する；中立；BrE/AmE",
+  "verbUsage": [
+    {
+      "label": "現在 (go)",
+      "text": "I go to work by bus.",
+      "translation": "私はバスで仕事に行きます。 — 中立；BrE/AmE"
+    },
+    {
+      "label": "過去 (went)",
+      "text": "She went home early yesterday.",
+      "translation": "彼女は昨日早く帰りました。 — 中立；BrE/AmE"
+    },
+    {
+      "label": "過去分詞 (gone)",
+      "text": "He has gone abroad for a month.",
+      "translation": "彼は1か月間海外に行きました。 — 中立；BrE/AmE"
+    }
+  ],
+  "examples": [
+    {
+      "text": "Let's go before it rains.",
+      "translation": "雨が降る前に行こう。 — 口語；BrE/AmE"
+    },
+    {
+      "text": "Where did you go last weekend?",
+      "translation": "先週末はどこに行きましたか。 — 中立；BrE/AmE"
+    },
+    {
+      "text": "The milk has gone bad.",
+      "translation": "牛乳が腐りました。 — 口語；BrE/AmE"
+    },
+    {
+      "text": "Time goes quickly.",
+      "translation": "時間は早く過ぎます。 — 中立；BrE/AmE"
+    },
+    {
+      "text": "We need to go now.",
+      "translation": "もう行かなければ。 — 中立；BrE/AmE"
+    },
+    {
+      "text": "She went quiet when he arrived.",
+      "translation": "彼が来ると彼女は黙りました。 — 中立；BrE/AmE"
+    },
+    {
+      "text": "He's gone to pick up the kids.",
+      "translation": "彼は子どもを迎えに行きました。 — 中立；BrE/AmE"
+    },
+    {
+      "text": "How's it going?",
+      "translation": "調子はどう？ — 口語；BrE/AmE"
+    },
+    {
+      "text": "Don't go there alone at night.",
+      "translation": "夜に一人でそこへ行かないで。 — 中立；BrE/AmE"
+    },
+    {
+      "text": "Everything went well, thanks.",
+      "translation": "すべてうまくいきました、ありがとう。 — 中立；BrE/AmE"
+    }
+  ]
+}

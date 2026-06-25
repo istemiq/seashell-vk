@@ -1,0 +1,1 @@
+JSON only. "text"=English sentences. "translation" and glossRu gloss=**Italian** (Latin script). NEVER Russian/Cyrillic in translation or gloss. Italian input → natural English headwordEn; phrase (2+ words) → full English translation, not one keyword.

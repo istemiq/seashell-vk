@@ -1,0 +1,63 @@
+{
+  "headwordEn": "go",
+  "glossRu": "go [ɡəʊ] — gitmek, hareket etmek; ayrılmak; nötr; BrE/AmE",
+  "verbUsage": [
+    {
+      "label": "şimd. (go)",
+      "text": "I go to work by bus.",
+      "translation": "İşe otobüsle gidiyorum. — nötr; BrE/AmE"
+    },
+    {
+      "label": "geçmiş (went)",
+      "text": "She went home early yesterday.",
+      "translation": "Dün erken eve gitti. — nötr; BrE/AmE"
+    },
+    {
+      "label": "part. (gone)",
+      "text": "He has gone abroad for a month.",
+      "translation": "Bir ay yurt dışına gitti. — nötr; BrE/AmE"
+    }
+  ],
+  "examples": [
+    {
+      "text": "Let's go before it rains.",
+      "translation": "Yağmur yağmadan gidelim. — günlük; BrE/AmE"
+    },
+    {
+      "text": "Where did you go last weekend?",
+      "translation": "Geçen hafta sonu nereye gittin? — nötr; BrE/AmE"
+    },
+    {
+      "text": "The milk has gone bad.",
+      "translation": "Süt bozuldu. — günlük; BrE/AmE"
+    },
+    {
+      "text": "Time goes quickly.",
+      "translation": "Zaman hızlı geçiyor. — nötr; BrE/AmE"
+    },
+    {
+      "text": "We need to go now.",
+      "translation": "Şimdi gitmemiz lazım. — nötr; BrE/AmE"
+    },
+    {
+      "text": "She went quiet when he arrived.",
+      "translation": "O geldiğinde suskunlaştı. — nötr; BrE/AmE"
+    },
+    {
+      "text": "He's gone to pick up the kids.",
+      "translation": "Çocukları almaya gitti. — nötr; BrE/AmE"
+    },
+    {
+      "text": "How's it going?",
+      "translation": "Nasıl gidiyor? — günlük; BrE/AmE"
+    },
+    {
+      "text": "Don't go there alone at night.",
+      "translation": "Gece yalnız oraya gitme. — nötr; BrE/AmE"
+    },
+    {
+      "text": "Everything went well, thanks.",
+      "translation": "Her şey iyi gitti, teşekkürler. — nötr; BrE/AmE"
+    }
+  ]
+}

@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+
+const SHIMMER_CYCLE_MS = 2600;
 
 function prefersReducedMotion() {
   if (typeof window === 'undefined') return true;
@@ -8,31 +10,20 @@ function prefersReducedMotion() {
 /** Серебряный перелив + точки после каждого цикла анимации (seashell → seashell.). */
 export function SeashellShimmerLoader() {
   const [dots, setDots] = useState(0);
-  const lockRef = useRef(false);
-  const spanRef = useRef(null);
   const reduced = prefersReducedMotion();
 
   useEffect(() => {
     if (reduced) return undefined;
-    const el = spanRef.current;
-    if (!el) return undefined;
 
-    const onIteration = () => {
-      if (lockRef.current) return;
-      lockRef.current = true;
+    const id = window.setInterval(() => {
       setDots((d) => (d >= 3 ? 0 : d + 1));
-      window.setTimeout(() => {
-        lockRef.current = false;
-      }, 50);
-    };
+    }, SHIMMER_CYCLE_MS);
 
-    el.addEventListener('animationiteration', onIteration);
-    return () => el.removeEventListener('animationiteration', onIteration);
+    return () => window.clearInterval(id);
   }, [reduced]);
 
   return (
     <span
-      ref={spanRef}
       className={reduced ? 'seashell-shimmer seashell-shimmer--static' : 'seashell-shimmer'}
       aria-hidden="true"
     >

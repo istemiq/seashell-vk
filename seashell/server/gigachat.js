@@ -3,7 +3,6 @@
  * Промпты лежат в `server/prompts/`. Ответы парсятся в JSON (примеры словаря, ход диалога практики).
  * Исходящие HTTPS-запросы идут через `undici` с опциональным ослаблением TLS (см. tlsInsecure).
  */
-import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
@@ -17,9 +16,29 @@ import {
   normalizeVerbUsage,
 } from './exampleFields.js';
 import { WORD_EXAMPLE_COUNT } from './dictionaryConstants.js';
+import {
+  getInputModeRules,
+  getPhraseEntryBanner,
+  headwordQuickResolveSystemPrompt,
+  isHeadwordValidForInput,
+  isPhraseLikeInput,
+  phraseInputRetryNote,
+  assertHeadwordMatchesInputShape,
+  wordInputLooksEnglish,
+} from './dictionaryInputMode.js';
+import { localeDictionaryRetryNote, normalizeContentLocale } from './promptLocales.js';
+import { assertPayloadMatchesContentLocale } from './localeValidation.js';
+import {
+  loadDictionaryFormatSamples,
+  loadDictionarySystemPrompt,
+  loadPracticeTurnPrompt,
+  loadWordExamplesUserPrompt,
+  listPromptLocaleStatus,
+} from './promptLoader.js';
+import { resolveLlmModel, resolveLlmProvider } from './llmProvider.js';
+import { openRouterChatCompletion } from './openrouter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROMPTS_DIR = path.join(__dirname, 'prompts');
 
 const OAUTH_URL = 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth';
 const CHAT_URL = 'https://gigachat.devices.sberbank.ru/api/v1/chat/completions';
@@ -128,58 +147,42 @@ async function getAccessToken() {
  * Словарный промпт читается с диска на каждый запрос (без in-memory кэша),
  * чтобы правки в `prompts/*` применялись без перезапуска процесса.
  */
-function getWordDictionaryUserPromptParts() {
+function getWordDictionaryUserPromptParts(contentLocale) {
+  const locale = normalizeContentLocale(contentLocale);
+  const { formatSample, formatSampleVerb } = loadDictionaryFormatSamples(locale);
   return {
-    template: fs.readFileSync(path.join(PROMPTS_DIR, 'word-examples.txt'), 'utf8'),
-    formatSample: fs.readFileSync(
-      path.join(PROMPTS_DIR, 'word-dictionary-format-sample.json'),
-      'utf8',
-    ),
-    formatSampleVerb: fs.readFileSync(
-      path.join(PROMPTS_DIR, 'word-dictionary-format-sample-verb.json'),
-      'utf8',
-    ),
+    template: loadWordExamplesUserPrompt(locale),
+    formatSample,
+    formatSampleVerb,
   };
 }
 
-/** System-роль GigaChat для словаря: `prompts/word-dictionary-system.txt`. */
-function buildDictionarySystemContent() {
-  const raw = fs.readFileSync(path.join(PROMPTS_DIR, 'word-dictionary-system.txt'), 'utf8');
-  return String(raw)
+/** System-роль GigaChat для словаря. */
+function buildDictionarySystemContent(contentLocale) {
+  const locale = normalizeContentLocale(contentLocale);
+  return String(loadDictionarySystemPrompt(locale))
     .trim()
     .replaceAll('{{WORD_EXAMPLE_COUNT}}', String(WORD_EXAMPLE_COUNT));
 }
 
-function fillPrompt(userInput) {
+function fillPrompt(userInput, contentLocale) {
   const w = String(userInput).trim();
-  const { template, formatSample, formatSampleVerb } = getWordDictionaryUserPromptParts();
-  return template
+  const locale = normalizeContentLocale(contentLocale);
+  const { template, formatSample, formatSampleVerb } = getWordDictionaryUserPromptParts(locale);
+  return getPhraseEntryBanner(w) + template
     .replaceAll('{{INPUT}}', w)
     .replaceAll('{{WORD}}', w)
     .replaceAll('{{WORD_EXAMPLE_COUNT}}', String(WORD_EXAMPLE_COUNT))
+    .replaceAll('{{INPUT_MODE_RULES}}', getInputModeRules(locale))
     .replaceAll('{{FORMAT_SAMPLE}}', formatSample.trim())
     .replaceAll('{{FORMAT_SAMPLE_VERB}}', formatSampleVerb.trim());
 }
 
 /** При старте API: пути и размеры файлов словарного промпта. */
 export function logDictionaryPromptStartupInfo() {
-  const dir = path.resolve(PROMPTS_DIR);
-  const files = [
-    'word-examples.txt',
-    'word-dictionary-format-sample.json',
-    'word-dictionary-format-sample-verb.json',
-    'word-dictionary-system.txt',
-  ];
-  console.log(`[seashell] dictionary prompts dir: ${dir}`);
-  for (const name of files) {
-    const p = path.join(PROMPTS_DIR, name);
-    try {
-      const st = fs.statSync(p);
-      console.log(`[seashell]   ${name}: ${st.size} bytes, mtime=${st.mtime.toISOString()}`);
-    } catch {
-      console.warn(`[seashell]   ${name}: MISSING`);
-    }
-  }
+  const { templatesDir, localeDirs } = listPromptLocaleStatus();
+  console.log(`[seashell] dictionary prompt templates: ${path.resolve(templatesDir)}`);
+  console.log(`[seashell] dictionary prompt locales: ${localeDirs.join(', ') || '(none)'}`);
   console.log(`[seashell] word example limit: ${WORD_EXAMPLE_COUNT}`);
 }
 
@@ -389,7 +392,8 @@ function sanitizeGlossRu(glossRuRaw) {
   return g;
 }
 
-async function gigaChatWordExamplesCompletion(userContent, model, token, temperature) {
+async function gigaChatRawCompletion({ model, messages, temperature, max_tokens, top_p, repetition_penalty }) {
+  const token = await getAccessToken();
   let res;
   try {
     res = await gigaFetch(CHAT_URL, {
@@ -401,12 +405,11 @@ async function gigaChatWordExamplesCompletion(userContent, model, token, tempera
       },
       body: JSON.stringify({
         model,
-        messages: [
-          { role: 'system', content: buildDictionarySystemContent() },
-          { role: 'user', content: userContent },
-        ],
+        messages,
         temperature,
-        max_tokens: 4000,
+        max_tokens,
+        ...(top_p != null ? { top_p } : {}),
+        ...(repetition_penalty != null ? { repetition_penalty } : {}),
       }),
     });
   } catch (e) {
@@ -425,6 +428,27 @@ async function gigaChatWordExamplesCompletion(userContent, model, token, tempera
   return content;
 }
 
+async function llmChatCompletion({ messages, temperature, max_tokens, top_p, repetition_penalty }) {
+  const model = resolveLlmModel();
+  if (resolveLlmProvider() === 'openrouter') {
+    return openRouterChatCompletion({ model, messages, temperature, max_tokens, top_p });
+  }
+  return gigaChatRawCompletion({ model, messages, temperature, max_tokens, top_p, repetition_penalty });
+}
+
+async function gigaChatWordExamplesCompletion(userContent, model, token, temperature, contentLocale) {
+  void model;
+  void token;
+  return llmChatCompletion({
+    messages: [
+      { role: 'system', content: buildDictionarySystemContent(contentLocale) },
+      { role: 'user', content: userContent },
+    ],
+    temperature,
+    max_tokens: 4000,
+  });
+}
+
 /** Температура для генерации словаря: из .env или 0.38. */
 function wordExamplesTemperature() {
   const raw = process.env.GIGACHAT_WORD_TEMPERATURE?.trim();
@@ -434,62 +458,106 @@ function wordExamplesTemperature() {
   return Math.min(2, Math.max(0, n));
 }
 
-export async function generateWordExamples(word) {
-  const model = process.env.GIGACHAT_MODEL_NAME || 'GigaChat';
-  const token = await getAccessToken();
-  const userContent = fillPrompt(word);
-  const content = await gigaChatWordExamplesCompletion(
-    userContent,
-    model,
-    token,
-    wordExamplesTemperature(),
-  );
+export async function generateWordExamples(word, { contentLocale } = {}) {
+  const locale = normalizeContentLocale(contentLocale);
+  const model = resolveLlmModel();
+  const token = resolveLlmProvider() === 'gigachat' ? await getAccessToken() : null;
+  const userContent = fillPrompt(word, locale);
 
-  let payload;
-  try {
-    payload = extractGenerationPayload(content);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(
-      `Ответ GigaChat не разобрался как JSON (${msg}). Частые причины: в ответе есть markdown вместо чистого JSON, обрезан длинный ответ, или ошибка в структуре. Попробуй ещё раз.`,
+  let lastErr;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const retryNote =
+      (attempt > 0 ? localeDictionaryRetryNote(locale) : '') + phraseInputRetryNote(word);
+    const content = await gigaChatWordExamplesCompletion(
+      userContent + retryNote,
+      model,
+      token,
+      attempt > 0 ? Math.min(0.55, wordExamplesTemperature() + 0.08) : wordExamplesTemperature(),
+      locale,
     );
-  }
-  const { glossRu, examples, headwordEn: headFromPayload, verbUsage } = payload;
 
-  if (examples.length < WORD_EXAMPLE_COUNT) {
-    throw new Error(`Expected ${WORD_EXAMPLE_COUNT} examples, got ${examples.length}`);
-  }
-
-  const g = sanitizeGlossRu(glossRu);
-  let headwordEn = typeof headFromPayload === 'string' ? headFromPayload.trim().replace(/\s+/g, ' ') : '';
-  if (!headwordEn) {
-    if (looksMostlyEnglish(word)) {
-      headwordEn = String(word).trim().replace(/\s+/g, ' ');
-    } else {
+    let payload;
+    try {
+      payload = extractGenerationPayload(content);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       throw new Error(
-        'Модель не вернула английскую форму слова (headwordEn). Попробуй добавить ещё раз.',
+        `Ответ модели не разобрался как JSON (${msg}). Частые причины: в ответе есть markdown вместо чистого JSON, обрезан длинный ответ, или ошибка в структуре. Попробуй ещё раз.`,
       );
+    }
+    const { glossRu, examples, headwordEn: headFromPayload, verbUsage } = payload;
+
+    if (examples.length < WORD_EXAMPLE_COUNT) {
+      throw new Error(`Expected ${WORD_EXAMPLE_COUNT} examples, got ${examples.length}`);
+    }
+
+    const g = sanitizeGlossRu(glossRu);
+    let headwordEn = typeof headFromPayload === 'string' ? headFromPayload.trim().replace(/\s+/g, ' ') : '';
+    if (!headwordEn) {
+      if (wordInputLooksEnglish(word, locale)) {
+        headwordEn = String(word).trim().replace(/\s+/g, ' ');
+      } else {
+        throw new Error(
+          'Модель не вернула английскую форму слова (headwordEn). Попробуй добавить ещё раз.',
+        );
+      }
+    }
+
+    const trimmed = examples.slice(0, WORD_EXAMPLE_COUNT);
+    const glossOut = ensureGlossRuShowsEnglishLemma(word, headwordEn, g);
+    const result = {
+      glossRu: glossOut,
+      glossNoteRu: null,
+      examples: trimmed,
+      headwordEn,
+      verbUsage: Array.isArray(verbUsage) && verbUsage.length === 3 ? verbUsage : [],
+    };
+
+    try {
+      assertHeadwordMatchesInputShape(word, headwordEn);
+      assertPayloadMatchesContentLocale(locale, result);
+      return result;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[gigachat] dictionary validation ${locale}, attempt ${attempt + 1}/4`, e?.message);
     }
   }
 
-  const trimmed = examples.slice(0, WORD_EXAMPLE_COUNT);
-
-  const glossOut = ensureGlossRuShowsEnglishLemma(word, headwordEn, g);
-
-  return {
-    glossRu: glossOut,
-    glossNoteRu: null,
-    examples: trimmed,
-    headwordEn,
-    verbUsage: Array.isArray(verbUsage) && verbUsage.length === 3 ? verbUsage : [],
-  };
+  throw lastErr instanceof Error ? lastErr : new Error('Wrong translation language from model');
 }
 
-function loadPracticeTurnTemplate() {
-  return fs.readFileSync(path.join(__dirname, 'prompts', 'practice-turn.txt'), 'utf8');
+/** Быстро получить английский headword до полной генерации (проверка дубликатов). */
+export async function resolveHeadwordEnQuick(word, contentLocale = 'en') {
+  const w = String(word ?? '').trim().replace(/\s+/g, ' ');
+  if (!w) return '';
+  if (wordInputLooksEnglish(w, contentLocale)) return w;
+  const isPhrase = isPhraseLikeInput(w);
+  const content = await llmChatCompletion({
+    messages: [
+      {
+        role: 'system',
+        content: headwordQuickResolveSystemPrompt(isPhrase),
+      },
+      { role: 'user', content: w.slice(0, 200) },
+    ],
+    temperature: 0.1,
+    max_tokens: 64,
+  });
+  try {
+    const parsed = extractJsonObject(content);
+    const hw = pickHeadwordEnFromParsed(parsed) || String(parsed?.headwordEn ?? '').trim();
+    const normalized = hw.replace(/\s+/g, ' ');
+    if (!isHeadwordValidForInput(w, normalized)) return '';
+    return normalized;
+  } catch {
+    return '';
+  }
 }
 
-function buildPracticePrompt(userText, historyLines) {
+export { wordInputLooksEnglish } from './dictionaryInputMode.js';
+
+function buildPracticePrompt(userText, historyLines, contentLocale) {
+  const locale = normalizeContentLocale(contentLocale);
   const h =
     !historyLines?.length
       ? '(empty)'
@@ -497,7 +565,7 @@ function buildPracticePrompt(userText, historyLines) {
           .map((m) => `${m.role}: ${m.text}`)
           .join('\n')
           .slice(0, 16000);
-  return loadPracticeTurnTemplate()
+  return loadPracticeTurnPrompt(locale)
     .replace('{{USER_TEXT}}', String(userText).trim().slice(0, 4000))
     .replace('{{HISTORY}}', h);
 }
@@ -534,9 +602,8 @@ function normalizePracticeTurn(obj) {
 }
 
 /** Один ход диалога: эхо реплики, правки, ответ собеседника. */
-export async function generatePracticeTurn({ userText, history }) {
-  const model = process.env.GIGACHAT_MODEL_NAME || 'GigaChat';
-  const token = await getAccessToken();
+export async function generatePracticeTurn({ userText, history, contentLocale } = {}) {
+  const locale = normalizeContentLocale(contentLocale);
   const historyLines = Array.isArray(history)
     ? history
         .filter((m) => m && typeof m.text === 'string')
@@ -546,46 +613,22 @@ export async function generatePracticeTurn({ userText, history }) {
           text: m.text.slice(0, 1200),
         }))
     : [];
-  const userContent = buildPracticePrompt(userText, historyLines);
+  const userContent = buildPracticePrompt(userText, historyLines, locale);
 
-  let res;
-  try {
-    res = await gigaFetch(CHAT_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
+  const content = await llmChatCompletion({
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You output only valid JSON when asked. No markdown fences. Keys: echo, corrections, reply. The "reply" must read like a sharp, natural native speaker in chat — specific, coherent with prior turns, not generic and not therapeutic.',
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You output only valid JSON when asked. No markdown fences. Keys: echo, corrections, reply. The "reply" must read like a sharp, natural native speaker in chat — specific, coherent with prior turns, not generic and not therapeutic.',
-          },
-          { role: 'user', content: userContent },
-        ],
-        temperature: 0.52,
-        top_p: 0.92,
-        max_tokens: 700,
-        repetition_penalty: 1.06,
-      }),
-    });
-  } catch (e) {
-    throw mapNetErr(e, 'chat');
-  }
-
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(`GigaChat chat: ${res.status} ${JSON.stringify(data)}`);
-  }
-
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content || typeof content !== 'string') {
-    throw new Error('Empty GigaChat response');
-  }
+      { role: 'user', content: userContent },
+    ],
+    temperature: 0.52,
+    top_p: 0.92,
+    max_tokens: 700,
+    repetition_penalty: 1.06,
+  });
 
   const raw = extractJsonObject(content);
   return normalizePracticeTurn(raw);

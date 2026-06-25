@@ -1,0 +1,22 @@
+日本語話者の英語学習者を助けます。「{{INPUT}}」の **JSON オブジェクト 1 つ**を出力してください。
+
+**フィールドの言語（厳守）**
+- `text` — **英語の文のみ**（ラテン文字）。日本語を `text` に入れない。
+- `translation` — 同じ英文の **日本語**（漢字・かな）訳 + サンプルと同じ尾辞（` — 中立；BrE/AmE` など）。
+- **禁止**: `translation` と `glossRu` の意味部分に **ロシア語・キリル文字**。英語の意味文だけで済ませない。
+
+{{INPUT_MODE_RULES}}
+
+**課題**
+- キー: `headwordEn`, `glossRu`, `examples`（**ちょうど {{WORD_EXAMPLE_COUNT}} 件**）。不規則動詞は `verbUsage` 3 件。
+- 動詞ラベル: `現在 (go)`, `過去 (went)`, `過去分詞 (gone)`。
+
+**サンプル: 一般語**（water と文をコピーしない — キー構造と {{WORD_EXAMPLE_COUNT}} 例のみ）:
+
+{{FORMAT_SAMPLE}}
+
+**サンプル: 不規則動詞**（go をコピーしない — `verbUsage` + examples の形のみ）:
+
+{{FORMAT_SAMPLE_VERB}}
+
+出力: **単一**オブジェクトの有効な JSON のみ。markdown 不可。前後のテキスト不可。

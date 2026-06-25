@@ -1,0 +1,63 @@
+{
+  "headwordEn": "go",
+  "glossRu": "go [ɡəʊ] — to move, travel; to leave; neutral; BrE/AmE",
+  "verbUsage": [
+    {
+      "label": "pres. (go)",
+      "text": "I go to work by bus.",
+      "translation": "I go to work by bus. — neutral; BrE/AmE"
+    },
+    {
+      "label": "past (went)",
+      "text": "She went home early yesterday.",
+      "translation": "She went home early yesterday. — neutral; BrE/AmE"
+    },
+    {
+      "label": "pp. (gone)",
+      "text": "He has gone abroad for a month.",
+      "translation": "He has gone abroad for a month. — neutral; BrE/AmE"
+    }
+  ],
+  "examples": [
+    {
+      "text": "Let's go before it rains.",
+      "translation": "Let's go before it rains. — informal; BrE/AmE"
+    },
+    {
+      "text": "Where did you go last weekend?",
+      "translation": "Where did you go last weekend? — neutral; BrE/AmE"
+    },
+    {
+      "text": "The milk has gone bad.",
+      "translation": "The milk has gone bad. — informal; BrE/AmE"
+    },
+    {
+      "text": "Time goes quickly.",
+      "translation": "Time goes quickly. — neutral; BrE/AmE"
+    },
+    {
+      "text": "We need to go now.",
+      "translation": "We need to go now. — neutral; BrE/AmE"
+    },
+    {
+      "text": "She went quiet when he arrived.",
+      "translation": "She went quiet when he arrived. — neutral; BrE/AmE"
+    },
+    {
+      "text": "He's gone to pick up the kids.",
+      "translation": "He's gone to pick up the kids. — neutral; BrE/AmE"
+    },
+    {
+      "text": "How's it going?",
+      "translation": "How's it going? — informal; BrE/AmE"
+    },
+    {
+      "text": "Don't go there alone at night.",
+      "translation": "Don't go there alone at night. — neutral; BrE/AmE"
+    },
+    {
+      "text": "Everything went well, thanks.",
+      "translation": "Everything went well, thanks. — neutral; BrE/AmE"
+    }
+  ]
+}

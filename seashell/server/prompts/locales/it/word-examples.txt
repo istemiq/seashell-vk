@@ -1,0 +1,26 @@
+Aiuti studenti italofoni di inglese. Serve **un** oggetto JSON per: "{{INPUT}}"
+
+**Lingua dei campi**
+- `text` — **solo frase inglese** (alfabeto latino). Non mettere italiano in `text`.
+- `translation` — traduzione **italiana** della stessa frase + coda stile come nel campione.
+- **VIETATO**: russo (alfabeto cirillico) in `translation` e nella parte di significato di `glossRu`. Solo **italiano** (alfabeto latino).
+
+{{INPUT_MODE_RULES}}
+
+**Compito**
+- Chiavi: `headwordEn`, `glossRu`, `examples`; verbi irregolari: `verbUsage` (3 oggetti).
+- **Esattamente {{WORD_EXAMPLE_COUNT}}** esempi. Coda: ` — neutro; BrE/AmE`, ` — colloq.; BrE/AmE`.
+- Trascrizione IPA in `glossRu` dopo `headwordEn`.
+- Etichette verbo: `pres. (go)`, `pass. (went)`, `part. (gone)`.
+
+Contenuto lecito, 16+, senza odio o istruzioni criminali.
+
+**Campione: parola comune** (non copiare water né le frasi — solo la forma delle chiavi e {{WORD_EXAMPLE_COUNT}} esempi):
+
+{{FORMAT_SAMPLE}}
+
+**Campione: verbo irregolare** (non copiare go né le frasi — solo la forma di `verbUsage` + examples):
+
+{{FORMAT_SAMPLE_VERB}}
+
+Risposta: **solo** JSON valido di un oggetto, senza markdown, senza testo prima o dopo.

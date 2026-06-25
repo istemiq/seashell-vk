@@ -1,0 +1,1 @@
+JSON only. "text"=English sentences. "translation" and glossRu gloss=**Portuguese** (Latin script). NEVER Russian/Cyrillic in translation or gloss. Portuguese input → natural English headwordEn; phrase (2+ words) → full English translation, not one keyword.

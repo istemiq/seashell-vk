@@ -7,6 +7,7 @@ import './load-env.js';
 import express from 'express';
 import cors from 'cors';
 import { verifyVkLaunchParams } from './vkSignature.js';
+import { verifyTelegramInitData } from './telegramAuth.js';
 import { assertAllowedUserContent } from './contentPolicy.js';
 import { WORD_EXAMPLE_COUNT } from './dictionaryConstants.js';
 import {
@@ -20,7 +21,6 @@ import {
   replaceExamplesForWord,
   deleteWord,
   findWordByLemma,
-  findReusableWordGeneration,
   saveCachedWordGeneration,
   listSets,
   createSet,
@@ -31,10 +31,16 @@ import {
 import {
   generateWordExamples,
   generatePracticeTurn,
+  resolveHeadwordEnQuick,
   tlsInsecure,
   logDictionaryPromptStartupInfo,
+  wordInputLooksEnglish,
 } from './gigachat.js';
+import { normalizeContentLocale } from './promptLocales.js';
+import { llmProviderLabel, resolveLlmModel, resolveLlmProvider } from './llmProvider.js';
 import { enqueueGigaChat, gigaChatQueueStats } from './gigachatQueue.js';
+import { isPayloadValidForContentLocale } from './localeValidation.js';
+import { isHeadwordValidForInput } from './dictionaryInputMode.js';
 import { registerTts } from './tts.js';
 
 const app = express();
@@ -60,6 +66,17 @@ function allowedOrigins() {
 const ORIGINS = allowedOrigins();
 const isProd = String(process.env.NODE_ENV ?? '').toLowerCase() === 'production';
 
+function respondDatabaseError(res, e) {
+  console.error(e);
+  const payload = { error: 'Database error' };
+  if (!isProd) {
+    payload.hint =
+      'PostgreSQL не доступен. Запустите Docker Desktop, затем в seashell_tg_clean: npm run db';
+    if (e?.message) payload.detail = e.message;
+  }
+  res.status(500).json(payload);
+}
+
 /** VK Mini Apps static hosting (prod/stage *.pages*.vk-apps.com). */
 function isVkAppsHostingOrigin(origin) {
   try {
@@ -84,6 +101,15 @@ app.use(
       return cb(new Error('CORS blocked'), false);
     },
     credentials: false,
+    allowedHeaders: [
+      'Content-Type',
+      'X-Telegram-Init-Data',
+      'X-Platform-User-Id',
+      'X-VK-User-Id',
+      'X-VK-Launch-Params',
+      'X-UI-Locale',
+      'X-Content-Locale',
+    ],
   }),
 );
 app.use(express.json({ limit: '256kb' }));
@@ -128,6 +154,65 @@ function vkLaunchParamsFromHeader(req) {
   return s || null;
 }
 
+function telegramInitDataFromHeader(req) {
+  const h = req.headers['x-telegram-init-data'];
+  return h != null ? String(h).trim() : '';
+}
+
+/** Локальная разработка TG без initData: тот же id, что шлёт фронт в X-VK-User-Id. */
+function tryTelegramDevHeaderAuth(req) {
+  if (isProd) return false;
+  const uid = vkUserIdFromHeader(req);
+  if (!uid) return false;
+  req.vkUserId = uid;
+  req.authVia = 'telegram-dev-header';
+  return true;
+}
+
+function tryTelegramInitDataAuth(req, res) {
+  const tgInit = telegramInitDataFromHeader(req);
+  if (!tgInit) return false;
+
+  const tgToken = String(process.env.TELEGRAM_BOT_TOKEN ?? '').trim();
+  if (!tgToken) {
+    if (tryTelegramDevHeaderAuth(req)) return true;
+    res.status(401).json({
+      error: 'Telegram init data received but TELEGRAM_BOT_TOKEN is not configured on the server',
+    });
+    return true;
+  }
+
+  const v = verifyTelegramInitData(tgInit, tgToken);
+  if (!v.ok) {
+    res.status(401).json({ error: 'Invalid Telegram init data' });
+    return true;
+  }
+  req.vkUserId = v.userId;
+  req.authVia = 'telegram';
+  return true;
+}
+
+function isLocalhostOrigin(req) {
+  const origin = String(req.headers.origin ?? '');
+  if (!origin) return false;
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+function tryLocalhostHeaderAuth(req) {
+  if (String(process.env.TELEGRAM_ALLOW_LOCALHOST_HEADER ?? '').trim() !== '1') return false;
+  if (!isLocalhostOrigin(req)) return false;
+  const uid = vkUserIdFromHeader(req);
+  if (!uid) return false;
+  req.vkUserId = uid;
+  req.authVia = 'localhost-header';
+  return true;
+}
+
 /** Синтетический vk_user_id для робота проверки деплоя VK (не должен содержать реальных данных). */
 function vkReviewerUserId() {
   const n = parseInt(String(process.env.VK_REVIEWER_USER_ID ?? '1'), 10);
@@ -166,16 +251,36 @@ function tryVkReviewerProbe(req) {
 // Must be registered before auth middleware: mp3 files are fetched by VK native player without headers.
 registerTts(app, { makeRateLimiter });
 
-// Маршруты ниже требуют авторизацию VK. /api/health — без неё.
-// При проверке деплоя робот VK открывает *.vk-apps.com без валидной vk_sign: для read-only GET
-// с этого origin отвечаем 200 с пустыми данными гостя, а не 401.
+function isTelegramFrontRequest(req) {
+  const urls = [req.headers.origin, req.headers.referer].filter(Boolean);
+  for (const raw of urls) {
+    try {
+      if (new URL(String(raw)).hostname.toLowerCase() === 'front.sishel.ru') return true;
+    } catch {
+      /* ignore */
+    }
+  }
+  return false;
+}
+
+// Маршруты ниже: Telegram initData ИЛИ VK launch params ИЛИ dev-заголовок.
 app.use((req, res, next) => {
+  if (tryTelegramInitDataAuth(req, res)) {
+    if (req.vkUserId) return next();
+    return;
+  }
+
   const secret = String(process.env.VK_APP_SECRET ?? '').trim();
   const lp = vkLaunchParamsFromHeader(req);
 
   if (secret) {
     if (!lp) {
       if (tryVkReviewerProbe(req)) return next();
+      if (tryLocalhostHeaderAuth(req)) return next();
+      if (tryTelegramDevHeaderAuth(req)) return next();
+      if (isTelegramFrontRequest(req)) {
+        return res.status(401).json({ error: 'Missing X-Telegram-Init-Data header' });
+      }
       return res.status(401).json({ error: 'Missing X-VK-Launch-Params header' });
     }
     const v = verifyVkLaunchParams(lp, secret);
@@ -211,42 +316,51 @@ function responseStatusForGenerationError(e) {
   return 502;
 }
 
-async function generateDictionaryPayload(word) {
-  const meta = dictionaryGenerationCacheMeta();
-  const cached = await getCachedWordGeneration(word, meta);
-  if (cached) {
-    return { payload: cached, source: 'cache' };
-  }
+function resolveContentLocale(req) {
+  const fromContent = req.headers['x-content-locale'];
+  const fromBody = req.body?.contentLocale;
+  const fromHeader = req.headers['x-ui-locale'];
+  const fromBodyUi = req.body?.uiLocale;
+  return normalizeContentLocale(fromContent || fromBody || fromHeader || fromBodyUi);
+}
 
-  const reusable = await findReusableWordGeneration(word);
-  if (reusable) {
-    await saveCachedWordGeneration(word, reusable, meta);
-    return { payload: reusable, source: 'existing-word' };
+function dictionaryCacheHit(requestWord, contentLocale, cached) {
+  if (!cached) return false;
+  if (!isPayloadValidForContentLocale(contentLocale, cached)) return false;
+  if (!isHeadwordValidForInput(requestWord, cached.headwordEn)) {
+    console.warn(
+      `[dict] cache skip: phrase "${requestWord}" stored as single keyword "${cached.headwordEn}"`,
+    );
+    return false;
+  }
+  return true;
+}
+
+async function generateDictionaryPayload(word, contentLocale) {
+  const meta = dictionaryGenerationCacheMeta(contentLocale);
+  const cached = await getCachedWordGeneration(word, meta);
+  if (dictionaryCacheHit(word, contentLocale, cached)) {
+    return { payload: cached, source: 'cache' };
   }
 
   return enqueueGigaChat(async () => {
     const cachedAfterWait = await getCachedWordGeneration(word, meta);
-    if (cachedAfterWait) {
+    if (dictionaryCacheHit(word, contentLocale, cachedAfterWait)) {
       return { payload: cachedAfterWait, source: 'cache' };
     }
 
-    const reusableAfterWait = await findReusableWordGeneration(word);
-    if (reusableAfterWait) {
-      await saveCachedWordGeneration(word, reusableAfterWait, meta);
-      return { payload: reusableAfterWait, source: 'existing-word' };
-    }
-
-    const generated = await generateWordExamples(word);
+    const generated = await generateWordExamples(word, { contentLocale });
     await saveCachedWordGeneration(word, generated, meta);
     if (
       generated.headwordEn &&
-      normalizeWord(generated.headwordEn).toLowerCase() !== normalizeWord(word).toLowerCase()
+      normalizeWord(generated.headwordEn).toLowerCase() !== normalizeWord(word).toLowerCase() &&
+      isHeadwordValidForInput(word, generated.headwordEn)
     ) {
       await saveCachedWordGeneration(generated.headwordEn, generated, meta);
     }
     return { payload: generated, source: 'gigachat' };
   }, {
-    label: `dictionary:${word}`,
+    label: `dictionary:${word}:${meta.contentLocale}`,
   });
 }
 
@@ -275,10 +389,14 @@ app.post('/api/practice/turn', limitPractice, async (req, res) => {
     .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string')
     .slice(-28)
     .map((m) => ({ role: m.role, text: m.text.slice(0, 1200) }));
+  const contentLocale = resolveContentLocale(req);
   try {
-    const turn = await enqueueGigaChat(() => generatePracticeTurn({ userText, history }), {
+    const turn = await enqueueGigaChat(
+      () => generatePracticeTurn({ userText, history, contentLocale }),
+      {
       label: `practice:${req.vkUserId}`,
-    });
+    },
+    );
     res.json({
       echo: turn.echo || userText,
       corrections: turn.corrections,
@@ -302,7 +420,7 @@ app.get('/api/words', async (req, res) => {
     res.json({ words: rows });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'Database error' });
+    respondDatabaseError(res, e);
   }
 });
 
@@ -313,7 +431,7 @@ app.get('/api/sets', async (req, res) => {
     res.json({ sets: rows });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'Database error' });
+    respondDatabaseError(res, e);
   }
 });
 
@@ -333,7 +451,7 @@ app.post('/api/sets', async (req, res) => {
     if (String(e?.code) === '23505') {
       return res.status(409).json({ error: 'Set already exists' });
     }
-    res.status(500).json({ error: 'Database error' });
+    respondDatabaseError(res, e);
   }
 });
 
@@ -353,7 +471,7 @@ app.patch('/api/sets/:id', async (req, res) => {
     if (String(e?.code) === '23505') {
       return res.status(409).json({ error: 'Set already exists' });
     }
-    res.status(500).json({ error: 'Database error' });
+    respondDatabaseError(res, e);
   }
 });
 
@@ -366,7 +484,7 @@ app.delete('/api/sets/:id', async (req, res) => {
     res.json({ ok: true, removedWordIds: r.removedWordIds });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'Database error' });
+    respondDatabaseError(res, e);
   }
 });
 
@@ -380,7 +498,7 @@ app.get('/api/words/:id', async (req, res) => {
     res.json(row);
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'Database error' });
+    respondDatabaseError(res, e);
   }
 });
 
@@ -394,7 +512,7 @@ app.put('/api/words/:id/sets', async (req, res) => {
     res.json({ setIds: out });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'Database error' });
+    respondDatabaseError(res, e);
   }
 });
 
@@ -417,10 +535,14 @@ async function handleRefreshExamples(req, res) {
     }
     const pol = assertAllowedUserContent(row.word);
     if (!pol.ok) return res.status(400).json({ error: pol.error });
-    const generated = await enqueueGigaChat(() => generateWordExamples(row.word), {
+    const contentLocale = resolveContentLocale(req);
+    const generated = await enqueueGigaChat(
+      () => generateWordExamples(row.word, { contentLocale }),
+      {
       label: `dictionary-refresh:${row.word}`,
-    });
-    await saveCachedWordGeneration(row.word, generated, dictionaryGenerationCacheMeta());
+    },
+    );
+    await saveCachedWordGeneration(row.word, generated, dictionaryGenerationCacheMeta(contentLocale));
     const saved = await replaceExamplesForWord(req.vkUserId, id, generated);
     res.json(saved);
   } catch (e) {
@@ -442,11 +564,34 @@ app.post('/api/words', limitGeneration, async (req, res) => {
   if (!pol.ok) return res.status(400).json({ error: pol.error });
 
   try {
-    if (await findWordByLemma(req.vkUserId, word)) {
-      return res.status(409).json({ error: 'Word already exists' });
+    const contentLocale = resolveContentLocale(req);
+
+    if (await findWordByLemma(req.vkUserId, word, contentLocale)) {
+      return res.status(409).json({ error: 'Word already exists', existingWord: word, contentLocale });
     }
 
-    const { payload: generated, source } = await generateDictionaryPayload(word);
+    if (!wordInputLooksEnglish(word, contentLocale)) {
+      const previewLemma = normalizeWord(
+        await enqueueGigaChat(() => resolveHeadwordEnQuick(word, contentLocale), {
+          label: `headword-preview:${word}`,
+        }),
+      );
+      if (previewLemma) {
+        const existing = await findWordByLemma(req.vkUserId, previewLemma, contentLocale);
+        if (existing) {
+          return res.status(409).json({
+            error: 'Word already exists',
+            existingWord: previewLemma,
+            contentLocale,
+          });
+        }
+      }
+    }
+
+    console.log(
+      `[dict] add word="${word}" contentLocale=${contentLocale} hdr=${req.headers['x-content-locale'] ?? '-'} body=${req.body?.contentLocale ?? '-'}`,
+    );
+    const { payload: generated, source } = await generateDictionaryPayload(word, contentLocale);
     const lemma = normalizeWord(generated.headwordEn);
     if (!lemma || lemma.length > 200) {
       return res.status(400).json({ error: 'Invalid word' });
@@ -454,12 +599,12 @@ app.post('/api/words', limitGeneration, async (req, res) => {
     const polLemma = assertAllowedUserContent(lemma);
     if (!polLemma.ok) return res.status(400).json({ error: polLemma.error });
 
-    if (await findWordByLemma(req.vkUserId, lemma)) {
-      return res.status(409).json({ error: 'Word already exists' });
+    if (await findWordByLemma(req.vkUserId, lemma, contentLocale)) {
+      return res.status(409).json({ error: 'Word already exists', existingWord: lemma, contentLocale });
     }
 
     const { headwordEn: _drop, ...payload } = generated;
-    const saved = await insertWordWithExamples(req.vkUserId, lemma, payload);
+    const saved = await insertWordWithExamples(req.vkUserId, lemma, payload, contentLocale);
     res.status(201).json({ ...saved, generationSource: source });
   } catch (e) {
     console.error(e);
@@ -477,7 +622,7 @@ app.delete('/api/words/:id', async (req, res) => {
     res.status(204).send();
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'Database error' });
+    respondDatabaseError(res, e);
   }
 });
 
@@ -486,21 +631,29 @@ async function start() {
   logDictionaryPromptStartupInfo();
   if (
     String(process.env.NODE_ENV ?? '').toLowerCase() === 'production' &&
-    !String(process.env.VK_APP_SECRET ?? '').trim()
+    !String(process.env.VK_APP_SECRET ?? '').trim() &&
+    !String(process.env.TELEGRAM_BOT_TOKEN ?? '').trim()
   ) {
-    console.warn('[seashell] VK_APP_SECRET пуст при NODE_ENV=production — клиент можно подделать только по X-VK-User-Id.');
+    console.warn(
+      '[seashell] VK_APP_SECRET и TELEGRAM_BOT_TOKEN пусты — API доверяет только заголовку X-VK-User-Id.',
+    );
+  }
+  const tgToken = String(process.env.TELEGRAM_BOT_TOKEN ?? '').trim();
+  if (tgToken) {
+    console.log('[seashell] Telegram Mini App auth: enabled (TELEGRAM_BOT_TOKEN set)');
   }
 
   app.listen(PORT, '0.0.0.0', () => {
     const tls = process.env.GIGACHAT_TLS_INSECURE?.trim();
-    const model = String(process.env.GIGACHAT_MODEL_NAME || '').trim() || 'GigaChat';
+    const provider = resolveLlmProvider();
+    const model = resolveLlmModel();
     console.log(`API: http://0.0.0.0:${PORT} (PORT=${process.env.PORT ?? 'default 3001'})`);
-    console.log(
-      `GigaChat: model=${model} (из GIGACHAT_MODEL_NAME; пусто → в коде подставляется базовый GigaChat)`,
-    );
-    console.log(
-      `GigaChat TLS relaxed (undici): ${tlsInsecure() ? 'yes' : 'no'} | NODE_ENV=${process.env.NODE_ENV ?? '(не задан)'} | GIGACHAT_TLS_INSECURE=${tls ?? '(unset)'}`,
-    );
+    console.log(`LLM: provider=${provider} (${llmProviderLabel()}) model=${model}`);
+    if (provider === 'gigachat') {
+      console.log(
+        `GigaChat TLS relaxed (undici): ${tlsInsecure() ? 'yes' : 'no'} | NODE_ENV=${process.env.NODE_ENV ?? '(не задан)'} | GIGACHAT_TLS_INSECURE=${tls ?? '(unset)'}`,
+      );
+    }
   });
 }
 

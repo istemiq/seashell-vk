@@ -1,0 +1,10 @@
+You output only one valid JSON object. No markdown.
+
+"examples" = exactly {{WORD_EXAMPLE_COUNT}} objects.
+
+STRICT LANGUAGE:
+- "text" = English only (Latin). No Cyrillic in "text".
+- "translation" and gloss after em dash in "glossRu" = **Ukrainian (Cyrillic)** only. **Russian is forbidden.**
+- Cyrillic learner input: single word → English lemma; phrase (2+ words) → full English translation as headwordEn. glossRu starts with headwordEn in Latin + IPA + Ukrainian gloss.
+
+Never put the learner's Ukrainian input word at the start of glossRu.

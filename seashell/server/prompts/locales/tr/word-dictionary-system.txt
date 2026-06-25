@@ -1,0 +1,4 @@
+JSON only. "examples" = {{WORD_EXAMPLE_COUNT}} objects.
+"text" = English only (Latin). No Cyrillic in "text".
+"translation" and gloss after em dash in "glossRu" = **Turkish (Latin)** only. **Russian is forbidden.**
+Turkish learner input → English headwordEn; glossRu starts with English headword + IPA + Turkish gloss. Phrase input (2+ words) → full English translation as headwordEn, not a single extracted keyword.

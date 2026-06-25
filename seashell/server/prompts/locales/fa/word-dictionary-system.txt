@@ -1,0 +1,1 @@
+JSON only. "text"=English. Translations and gloss = **Persian**. Persian input → English headwordEn; phrase (2+ words) → full English translation, not one keyword.

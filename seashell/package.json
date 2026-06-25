@@ -17,6 +17,7 @@
     "verify:hosting": "node scripts/verify-hosting.mjs",
     "placement:show": "node scripts/placement-show.mjs",
     "api": "node server/index.js",
+    "test": "node --test server/tests/*.test.js",
     "compose": "docker compose up --build",
     "compose:detach": "docker compose up --build -d"
   },

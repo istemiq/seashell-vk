@@ -10,6 +10,8 @@ import {
   normalizeVerbUsage,
 } from './exampleFields.js';
 import { WORD_EXAMPLE_COUNT } from './dictionaryConstants.js';
+import { normalizeContentLocale } from './promptLocales.js';
+import { resolveLlmModel } from './llmProvider.js';
 
 const { Pool } = pg;
 
@@ -73,6 +75,16 @@ export async function initDb() {
   await pool.query(`ALTER TABLE words ADD COLUMN IF NOT EXISTS gloss_note_ru TEXT`);
   await pool.query(`ALTER TABLE examples ADD COLUMN IF NOT EXISTS note_ru TEXT`);
   await pool.query(`ALTER TABLE words ADD COLUMN IF NOT EXISTS verb_usage TEXT`);
+  await pool.query(`ALTER TABLE words ADD COLUMN IF NOT EXISTS content_locale TEXT`);
+  await pool.query(
+    `UPDATE words SET content_locale = 'ru' WHERE content_locale IS NULL OR TRIM(content_locale) = ''`,
+  );
+  await pool.query(`ALTER TABLE words ALTER COLUMN content_locale SET DEFAULT 'ru'`);
+  await pool.query(`DROP INDEX IF EXISTS words_user_word_lower`);
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS words_user_word_locale_lower
+     ON words (vk_user_id, LOWER(word), content_locale)`,
+  );
 
   await pool.query('DELETE FROM examples WHERE idx >= $1', [WORD_EXAMPLE_COUNT]);
 
@@ -89,8 +101,14 @@ export async function initDb() {
     use_count INTEGER NOT NULL DEFAULT 0
   )`);
   await pool.query(
+    `ALTER TABLE dictionary_generation_cache ADD COLUMN IF NOT EXISTS content_locale TEXT NOT NULL DEFAULT 'ru'`,
+  );
+  await pool.query(`DROP INDEX IF EXISTS idx_dictionary_generation_cache_request`);
+  await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_dictionary_generation_cache_request
-     ON dictionary_generation_cache (LOWER(request_word), model, prompt_version, example_count)`,
+     ON dictionary_generation_cache (
+       LOWER(request_word), model, prompt_version, example_count, content_locale
+     )`,
   );
 }
 
@@ -117,12 +135,19 @@ function normalizeCacheWord(word) {
     .toLowerCase();
 }
 
-function dictionaryCacheKey({ requestWord, model, promptVersion, exampleCount = WORD_EXAMPLE_COUNT }) {
+function dictionaryCacheKey({
+  requestWord,
+  model,
+  promptVersion,
+  exampleCount = WORD_EXAMPLE_COUNT,
+  contentLocale = 'ru',
+}) {
   return [
     normalizeCacheWord(requestWord),
     String(model || 'GigaChat').trim(),
     String(promptVersion || 'v1').trim(),
     String(exampleCount),
+    String(contentLocale || 'ru').trim().toLowerCase(),
   ].join('\u001f');
 }
 
@@ -155,11 +180,12 @@ function payloadFromWordRow(word, examples) {
   };
 }
 
-export function dictionaryGenerationCacheMeta() {
+export function dictionaryGenerationCacheMeta(contentLocale) {
   return {
-    model: String(process.env.GIGACHAT_MODEL_NAME || 'GigaChat').trim() || 'GigaChat',
-    promptVersion: String(process.env.GIGACHAT_DICTIONARY_CACHE_VERSION || 'v1').trim() || 'v1',
+    model: resolveLlmModel(),
+    promptVersion: String(process.env.GIGACHAT_DICTIONARY_CACHE_VERSION || 'v6').trim() || 'v6',
     exampleCount: WORD_EXAMPLE_COUNT,
+    contentLocale: normalizeContentLocale(contentLocale),
   };
 }
 
@@ -182,11 +208,12 @@ export async function saveCachedWordGeneration(requestWord, payload, meta = dict
   const key = dictionaryCacheKey({ requestWord, ...meta });
   await pool.query(
     `INSERT INTO dictionary_generation_cache
-      (cache_key, request_word, headword_en, model, prompt_version, example_count, payload, created_at, last_used_at, use_count)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $8, 0)
+      (cache_key, request_word, headword_en, model, prompt_version, example_count, content_locale, payload, created_at, last_used_at, use_count)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $9, 0)
      ON CONFLICT (cache_key) DO UPDATE SET
        headword_en = EXCLUDED.headword_en,
        payload = EXCLUDED.payload,
+       content_locale = EXCLUDED.content_locale,
        last_used_at = EXCLUDED.last_used_at`,
     [
       key,
@@ -195,6 +222,7 @@ export async function saveCachedWordGeneration(requestWord, payload, meta = dict
       meta.model,
       meta.promptVersion,
       meta.exampleCount,
+      normalizeContentLocale(meta.contentLocale),
       JSON.stringify(normalized),
       now,
     ],
@@ -202,6 +230,9 @@ export async function saveCachedWordGeneration(requestWord, payload, meta = dict
   return normalized;
 }
 
+/**
+ * @deprecated Scripts only — ignores content_locale.
+ */
 export async function findReusableWordGeneration(wordNorm) {
   const normalized = normalizeCacheWord(wordNorm);
   if (!normalized) return null;
@@ -249,7 +280,7 @@ function unpackWordPayload(payload) {
 
 export async function listWords(vkUserId) {
   const { rows } = await pool.query(
-    `SELECT w.id, w.word, w.created_at,
+    `SELECT w.id, w.word, w.created_at, w.content_locale,
       (SELECT COUNT(*)::int FROM examples e WHERE e.word_id = w.id AND e.idx < $2) AS example_count
      FROM words w WHERE w.vk_user_id = $1
      ORDER BY w.created_at DESC`,
@@ -263,7 +294,7 @@ export async function listWords(vkUserId) {
 
 export async function listWordsInSet(vkUserId, setId) {
   const { rows } = await pool.query(
-    `SELECT w.id, w.word, w.created_at,
+    `SELECT w.id, w.word, w.created_at, w.content_locale,
       (SELECT COUNT(*)::int FROM examples e WHERE e.word_id = w.id AND e.idx < $3) AS example_count
      FROM words w
      JOIN word_set_items wsi ON wsi.word_id = w.id
@@ -280,7 +311,7 @@ export async function listWordsInSet(vkUserId, setId) {
 
 export async function getWordWithExamples(vkUserId, wordId) {
   const { rows: wRows } = await pool.query(
-    'SELECT id, word, created_at, gloss_ru, gloss_note_ru, verb_usage FROM words WHERE id = $1 AND vk_user_id = $2',
+    'SELECT id, word, created_at, gloss_ru, gloss_note_ru, verb_usage, content_locale FROM words WHERE id = $1 AND vk_user_id = $2',
     [wordId, vkUserId],
   );
   const word = wRows[0];
@@ -302,7 +333,8 @@ export async function getWordWithExamples(vkUserId, wordId) {
   return { ...word, examples, setIds, verb_usage };
 }
 
-export async function insertWordWithExamples(vkUserId, wordNorm, payload) {
+export async function insertWordWithExamples(vkUserId, wordNorm, payload, contentLocale = 'ru') {
+  const loc = normalizeContentLocale(contentLocale);
   const { glossRu, glossNoteRu, examples: examplesInRaw, verbUsage } = unpackWordPayload(payload);
   const examplesIn = examplesInRaw.slice(0, WORD_EXAMPLE_COUNT);
   const verbUsageJson = serializeVerbUsage(verbUsage);
@@ -311,8 +343,9 @@ export async function insertWordWithExamples(vkUserId, wordNorm, payload) {
   try {
     await client.query('BEGIN');
     const ins = await client.query(
-      'INSERT INTO words (vk_user_id, word, created_at, gloss_ru, gloss_note_ru, verb_usage) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-      [vkUserId, wordNorm, createdAt, glossRu, glossNoteRu, verbUsageJson],
+      `INSERT INTO words (vk_user_id, word, created_at, gloss_ru, gloss_note_ru, verb_usage, content_locale)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [vkUserId, wordNorm, createdAt, glossRu, glossNoteRu, verbUsageJson, loc],
     );
     const wordId = Number(ins.rows[0].id);
     for (let idx = 0; idx < examplesIn.length; idx++) {
@@ -397,10 +430,11 @@ export async function deleteWord(vkUserId, wordId) {
   return r.rowCount > 0;
 }
 
-export async function findWordByLemma(vkUserId, wordNorm) {
+export async function findWordByLemma(vkUserId, wordNorm, contentLocale = 'ru') {
+  const loc = normalizeContentLocale(contentLocale);
   const { rows } = await pool.query(
-    'SELECT id FROM words WHERE vk_user_id = $1 AND LOWER(word) = LOWER($2)',
-    [vkUserId, wordNorm],
+    'SELECT id, word, content_locale FROM words WHERE vk_user_id = $1 AND LOWER(word) = LOWER($2) AND content_locale = $3',
+    [vkUserId, wordNorm, loc],
   );
   return rows[0] ?? null;
 }

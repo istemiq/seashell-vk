@@ -9,15 +9,18 @@ import { bootstrapVkSession } from './utils/vkSession.js';
 
 async function bootstrap() {
   preserveInitialLaunchSearch();
-  if (vkBridge.isWebView?.()) {
-    vkBridge.send('VKWebAppInit').catch(() => {});
-    await bootstrapVkSession({ skipInit: true });
-  } else {
-    vkBridge.send('VKWebAppInit').catch(() => {});
-    await bootstrapVkSession();
-  }
+  vkBridge.send('VKWebAppInit').catch(() => {});
 
+  // Не блокируем первый кадр: VK на mvk рубит «loading error», если React долго не монтируется.
   createRoot(document.getElementById('root')).render(<AppConfig />);
+
+  const sessionTask =
+    vkBridge.isWebView?.() ?
+      bootstrapVkSession({ skipInit: true })
+    : bootstrapVkSession();
+  void sessionTask.catch((e) => {
+    console.warn('[Seashell] bootstrapVkSession', e);
+  });
 
   if (import.meta.env.MODE === 'development') {
     import('./eruda.js');

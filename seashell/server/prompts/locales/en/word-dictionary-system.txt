@@ -1,0 +1,1 @@
+JSON only. "text" and learner-facing gloss/translation = **English**. Single-word headwordEn = English lemma; phrase input = full English phrase as headwordEn.

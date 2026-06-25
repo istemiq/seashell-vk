@@ -32,6 +32,7 @@ function slurpEnvKey(filePath, key) {
       return undefined;
     }
   }
+  let lastNonEmpty;
   for (const line of text.split(/\r?\n/)) {
     const t = line.trim();
     if (!t || t.startsWith('#')) continue;
@@ -39,19 +40,23 @@ function slurpEnvKey(filePath, key) {
     if (eq === -1) continue;
     const k = t.slice(0, eq).trim();
     if (k !== key) continue;
-    return t.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+    const val = t.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+    if (val !== '') lastNonEmpty = val;
   }
-  return undefined;
+  return lastNonEmpty;
 }
 
-if (!process.env.GIGACHAT_TLS_INSECURE?.trim()) {
-  const v =
-    slurpEnvKey(envInServer, 'GIGACHAT_TLS_INSECURE') ?? slurpEnvKey(envInSeashellRoot, 'GIGACHAT_TLS_INSECURE');
+function ensureEnvKey(key) {
+  if (process.env[key]?.trim()) return;
+  const v = slurpEnvKey(envInServer, key) ?? slurpEnvKey(envInSeashellRoot, key);
   if (v != null && v !== '') {
-    process.env.GIGACHAT_TLS_INSECURE = v;
-    console.log('[load-env] GIGACHAT_TLS_INSECURE подставлен из файла (fallback, не через dotenv)');
+    process.env[key] = v;
+    console.log(`[load-env] ${key} подставлен из файла (fallback: пустая строка в .env не затирает значение)`);
   }
 }
+
+ensureEnvKey('GIGACHAT_TLS_INSECURE');
+ensureEnvKey('TELEGRAM_BOT_TOKEN');
 
 const tls = process.env.GIGACHAT_TLS_INSECURE?.trim();
 const nodeEnv = process.env.NODE_ENV ?? '(не задан)';

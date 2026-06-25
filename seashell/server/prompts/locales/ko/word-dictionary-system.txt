@@ -1,0 +1,1 @@
+JSON only. "text"=English sentences (Latin). "translation" and gloss meaning=**Korean** (Hangul). **NEVER Russian/Cyrillic.** Korean input → natural English headwordEn; phrase (2+ words) → full English translation, not one keyword.

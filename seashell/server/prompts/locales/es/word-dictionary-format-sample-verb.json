@@ -1,0 +1,63 @@
+{
+  "headwordEn": "go",
+  "glossRu": "go [ɡəʊ] — ir, desplazarse; marcharse; neutro; BrE/AmE",
+  "verbUsage": [
+    {
+      "label": "pres. (go)",
+      "text": "I go to work by bus.",
+      "translation": "Voy al trabajo en autobús. — neutro; BrE/AmE"
+    },
+    {
+      "label": "pret. (went)",
+      "text": "She went home early yesterday.",
+      "translation": "Ayer se fue a casa temprano. — neutro; BrE/AmE"
+    },
+    {
+      "label": "part. (gone)",
+      "text": "He has gone abroad for a month.",
+      "translation": "Se ha ido al extranjero un mes. — neutro; BrE/AmE"
+    }
+  ],
+  "examples": [
+    {
+      "text": "Let's go before it rains.",
+      "translation": "Vámonos antes de que llueva. — coloq.; BrE/AmE"
+    },
+    {
+      "text": "Where did you go last weekend?",
+      "translation": "¿Adónde fuiste el fin de semana pasado? — neutro; BrE/AmE"
+    },
+    {
+      "text": "The milk has gone bad.",
+      "translation": "La leche se ha echado a perder. — coloq.; BrE/AmE"
+    },
+    {
+      "text": "Time goes quickly.",
+      "translation": "El tiempo pasa rápido. — neutro; BrE/AmE"
+    },
+    {
+      "text": "We need to go now.",
+      "translation": "Tenemos que irnos ya. — neutro; BrE/AmE"
+    },
+    {
+      "text": "She went quiet when he arrived.",
+      "translation": "Se quedó callada cuando él llegó. — neutro; BrE/AmE"
+    },
+    {
+      "text": "He's gone to pick up the kids.",
+      "translation": "Ha ido a recoger a los niños. — neutro; BrE/AmE"
+    },
+    {
+      "text": "How's it going?",
+      "translation": "¿Qué tal? — coloq.; BrE/AmE"
+    },
+    {
+      "text": "Don't go there alone at night.",
+      "translation": "No vayas allí solo de noche. — neutro; BrE/AmE"
+    },
+    {
+      "text": "Everything went well, thanks.",
+      "translation": "Todo salió bien, gracias. — neutro; BrE/AmE"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+JSON only. "text"=English sentences (Latin). "translation" and gloss meaning=**Japanese** (kanji/kana). **NEVER Russian/Cyrillic.** Japanese input → natural English headwordEn; phrase (2+ words) → full English translation, not one keyword.

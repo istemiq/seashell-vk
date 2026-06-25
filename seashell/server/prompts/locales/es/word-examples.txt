@@ -1,0 +1,30 @@
+Ayudas a estudiantes hispanohablantes de inglés. Necesitas **un** objeto JSON para: "{{INPUT}}"
+
+**Idioma de los campos**
+- `text` — **solo oración en inglés** (letras latinas). No pongas español en `text`, aunque "{{INPUT}}" esté en español. El alumno aprende **inglés**.
+- `translation` — traducción al **español** de la misma oración inglesa, más cola de etiquetas como en la muestra.
+
+{{INPUT_MODE_RULES}}
+
+**Tarea**
+- Claves: `headwordEn`, `glossRu`, `examples`; verbos irregulares: `verbUsage` (3 objetos).
+- **Exactamente {{WORD_EXAMPLE_COUNT}}** ejemplos. Cola: ` — neutro; BrE/AmE`, ` — coloq.; BrE/AmE`.
+
+**Transcripción**: `water [ˈwɔːtə] — agua…` en `glossRu`.
+
+**Verbo irregular**: etiquetas `pres. (go)`, `pret. (went)`, `part. (gone)`.
+
+Contenido lícito, 16+, sin odio, drogas, instrucciones delictivas; sin groserías.
+
+- **PROHIBIDO**: ruso (alfabeto cirílico) en `translation` y en el significado de `glossRu`. Solo **español**.
+
+**Muestra: palabra común** (no copies water ni las frases — solo la forma de las claves y {{WORD_EXAMPLE_COUNT}} ejemplos):
+
+{{FORMAT_SAMPLE}}
+
+**Muestra: verbo irregular** (no copies go ni las frases — solo la forma de `verbUsage` + examples):
+
+{{FORMAT_SAMPLE_VERB}}
+
+Respuesta: **solo** JSON válido de un objeto, sin markdown, sin texto antes o después.
+

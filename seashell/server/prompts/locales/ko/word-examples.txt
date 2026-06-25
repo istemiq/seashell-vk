@@ -1,0 +1,22 @@
+한국어 사용자 영어 학습자를 돕습니다. "{{INPUT}}"에 대한 **JSON 객체 하나**를 만드세요.
+
+**필드 언어 (필수)**
+- `text` — **영어 문장만** (라틴 문자). `text`에 한국어를 넣지 마세요.
+- `translation` — 같은 영어 문장의 **한국어**(한글) 번역 + 샘플과 같은 꼬리표 (` — 중립; BrE/AmE` 등).
+- **금지**: `translation`과 `glossRu` 뜻에 **러시아어·키릴 문자**. 영어 뜻만 쓰지 마세요.
+
+{{INPUT_MODE_RULES}}
+
+**과제**
+- 키: `headwordEn`, `glossRu`, `examples` (**정확히 {{WORD_EXAMPLE_COUNT}}개**). 불규칙 동사는 `verbUsage` 3개.
+- 동사 라벨: `현재 (go)`, `과거 (went)`, `과거분사 (gone)`.
+
+**샘플: 일반 단어** (water와 문장을 복사하지 말 것 — 키 형태와 {{WORD_EXAMPLE_COUNT}}개 예문만):
+
+{{FORMAT_SAMPLE}}
+
+**샘플: 불규칙 동사** (go 복사 금지 — `verbUsage` + examples 형태만):
+
+{{FORMAT_SAMPLE_VERB}}
+
+출력: **오직** 유효한 JSON 객체 하나, markdown 없음, 앞뒤 텍스트 없음.

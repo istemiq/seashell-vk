@@ -1,0 +1,63 @@
+{
+  "headwordEn": "go",
+  "glossRu": "go [ɡəʊ] — رفتن، حرکت کردن؛ ترک کردن؛ خنثی؛ BrE/AmE",
+  "verbUsage": [
+    {
+      "label": "حال (go)",
+      "text": "I go to work by bus.",
+      "translation": "با اتوبوس سر کار می‌روم. — خنثی؛ BrE/AmE"
+    },
+    {
+      "label": "گذشته (went)",
+      "text": "She went home early yesterday.",
+      "translation": "دیروز زود به خانه رفت. — خنثی؛ BrE/AmE"
+    },
+    {
+      "label": "گذشته نقلی (gone)",
+      "text": "He has gone abroad for a month.",
+      "translation": "او یک ماه به خارج رفته است. — خنثی؛ BrE/AmE"
+    }
+  ],
+  "examples": [
+    {
+      "text": "Let's go before it rains.",
+      "translation": "برویم قبل از باران. — محاوره‌ای؛ BrE/AmE"
+    },
+    {
+      "text": "Where did you go last weekend?",
+      "translation": "آخر هفته گذشته کجا رفتی؟ — خنثی؛ BrE/AmE"
+    },
+    {
+      "text": "The milk has gone bad.",
+      "translation": "شیر فاسد شده است. — محاوره‌ای؛ BrE/AmE"
+    },
+    {
+      "text": "Time goes quickly.",
+      "translation": "زمان سریع می‌گذرد. — خنثی؛ BrE/AmE"
+    },
+    {
+      "text": "We need to go now.",
+      "translation": "باید الان برویم. — خنثی؛ BrE/AmE"
+    },
+    {
+      "text": "She went quiet when he arrived.",
+      "translation": "وقتی او رسید ساکت شد. — خنثی؛ BrE/AmE"
+    },
+    {
+      "text": "He's gone to pick up the kids.",
+      "translation": "رفته بچه‌ها را بردارد. — خنثی؛ BrE/AmE"
+    },
+    {
+      "text": "How's it going?",
+      "translation": "حالت چطور است؟ — محاوره‌ای؛ BrE/AmE"
+    },
+    {
+      "text": "Don't go there alone at night.",
+      "translation": "شب تنها آنجا نرو. — خنثی؛ BrE/AmE"
+    },
+    {
+      "text": "Everything went well, thanks.",
+      "translation": "همه چیز خوب پیش رفت، ممنون. — خنثی؛ BrE/AmE"
+    }
+  ]
+}

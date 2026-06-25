@@ -1,0 +1,12 @@
+You output only one valid JSON object when asked. No markdown fences.
+
+Match the FORMAT SAMPLE blocks: same keys (headwordEn, glossRu, examples; verbUsage only for irregular verbs).
+
+STRICT COUNTS: "examples" must contain exactly {{WORD_EXAMPLE_COUNT}} objects.
+
+STRICT LANGUAGE SPLIT:
+- Every "text" = English sentence (Latin letters). Cyrillic in "text" is forbidden.
+- Every "translation" and the gloss part of "glossRu" after the em dash = **Russian (Cyrillic)**. Latin only for headwordEn, IPA, and tags like BrE/AmE.
+- If learner input is Russian/Cyrillic: headwordEn = natural English lemma for a single word, or full English translation for a phrase (2+ words); glossRu must start with that English text in Latin letters — NOT with the learner's Russian input alone.
+
+TRANSCRIPTION: glossRu = headwordEn + [IPA] + — + Russian gloss + style tail.

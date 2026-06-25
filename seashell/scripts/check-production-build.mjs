@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-/** Сборка для prod должна содержать баннер и фикс launch params — иначе не деплоим. */
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+/** Сборка для prod: фикс launch params, без рекламной интеграции. */
+import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,7 +28,7 @@ const css = readFileSync(join(buildDir, 'assets', cssRel), 'utf8');
 const STALE_JS = new Set(['index-B3VDmg2I.js', 'index-Br9YwzMQ.js']);
 
 const checks = [
-  { label: 'баннер VK (banner_location)', ok: js.includes('banner_location') },
+  { label: 'без рекламы (нет banner_location)', ok: !js.includes('banner_location') },
   { label: 'фикс mvk (сброс launch params)', ok: js.includes('removeItem') && js.includes('seashell_vk_launch_qs') },
   { label: 'компактная анимация (4.5vw в CSS)', ok: css.includes('4.5vw') },
   { label: 'не старый бандл B3VDmg2I/Br9YwzMQ', ok: !STALE_JS.has(jsRel) },
@@ -43,9 +43,8 @@ for (const c of checks) {
 
 if (failed) {
   console.error('');
-  console.error('Сборка не та, что нужна для модерации. Частые причины:');
+  console.error('Сборка не прошла проверку. Частые причины:');
   console.error('  • не сохранены файлы в редакторе перед build');
-  console.error('  • в логе vite было «4075 modules» вместо «4076 modules»');
   console.error('  • deploy прошёл, но в dev.vk → Размещение остался старый prod URL');
   process.exit(1);
 }

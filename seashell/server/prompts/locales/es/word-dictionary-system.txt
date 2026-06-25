@@ -1,0 +1,3 @@
+JSON only. "examples" = {{WORD_EXAMPLE_COUNT}} objects.
+"text" = English. "translation" and gloss in glossRu = **Spanish**. No Russian/Cyrillic in translations.
+Spanish input → English headwordEn; glossRu starts with English headword + IPA + Spanish gloss. Phrase (2+ words) → full English translation as headwordEn, not one keyword.

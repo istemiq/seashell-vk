@@ -1,0 +1,63 @@
+{
+  "headwordEn": "go",
+  "glossRu": "go [ɡəʊ] — يذهب، ينتقل؛ يغادر؛ محايد؛ BrE/AmE",
+  "verbUsage": [
+    {
+      "label": "مضارع (go)",
+      "text": "I go to work by bus.",
+      "translation": "أذهب إلى العمل بالحافلة. — محايد؛ BrE/AmE"
+    },
+    {
+      "label": "ماضٍ (went)",
+      "text": "She went home early yesterday.",
+      "translation": "ذهبت إلى المنزل مبكرًا أمس. — محايد؛ BrE/AmE"
+    },
+    {
+      "label": "تصريف ثالث (gone)",
+      "text": "He has gone abroad for a month.",
+      "translation": "ذهب إلى الخارج لمدة شهر. — محايد؛ BrE/AmE"
+    }
+  ],
+  "examples": [
+    {
+      "text": "Let's go before it rains.",
+      "translation": "لنذهب قبل أن تمطر. — عامي؛ BrE/AmE"
+    },
+    {
+      "text": "Where did you go last weekend?",
+      "translation": "إلى أين ذهبت في عطلة نهاية الأسبوع الماضية؟ — محايد؛ BrE/AmE"
+    },
+    {
+      "text": "The milk has gone bad.",
+      "translation": "فسد الحليب. — عامي؛ BrE/AmE"
+    },
+    {
+      "text": "Time goes quickly.",
+      "translation": "الوقت يمر بسرعة. — محايد؛ BrE/AmE"
+    },
+    {
+      "text": "We need to go now.",
+      "translation": "علينا أن نذهب الآن. — محايد؛ BrE/AmE"
+    },
+    {
+      "text": "She went quiet when he arrived.",
+      "translation": "صمتت عندما وصل. — محايد؛ BrE/AmE"
+    },
+    {
+      "text": "He's gone to pick up the kids.",
+      "translation": "ذهب ليأخذ الأطفال. — محايد؛ BrE/AmE"
+    },
+    {
+      "text": "How's it going?",
+      "translation": "كيف الحال؟ — عامي؛ BrE/AmE"
+    },
+    {
+      "text": "Don't go there alone at night.",
+      "translation": "لا تذهب هناك وحيدًا في الليل. — محايد؛ BrE/AmE"
+    },
+    {
+      "text": "Everything went well, thanks.",
+      "translation": "سار كل شيء على ما يرام، شكرًا. — محايد؛ BrE/AmE"
+    }
+  ]
+}
