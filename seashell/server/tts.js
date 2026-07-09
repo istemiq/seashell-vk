@@ -31,6 +31,13 @@ function cacheRootDir() {
   return '/var/lib/seashell-tts';
 }
 
+function piperBinaryPath() {
+  const fromEnv = String(process.env.TTS_PIPER_BIN ?? '').trim();
+  if (fromEnv) return fromEnv;
+  if (process.platform === 'win32') return 'piper';
+  return '/opt/piper/piper/piper';
+}
+
 function voiceModelPath(locale) {
   const lc = String(locale ?? '').toLowerCase();
   if (lc === 'en-gb' || lc === 'en_gb') {
@@ -123,18 +130,19 @@ async function ensureMp3Cached({ text, locale, rate }) {
 
   const p = (async () => {
     await fs.mkdir(dir, { recursive: true });
-    const tmpWav = path.join(os.tmpdir(), `seashell-tts-${key}.wav`);
-    const tmpMp3 = path.join(os.tmpdir(), `seashell-tts-${key}.mp3`);
+    // Temp files must live on the same volume as cache — rename from /tmp → /var fails with EXDEV.
+    const tmpWav = path.join(dir, `${key}.wav.part`);
+    const tmpMp3 = path.join(dir, `${key}.tmp.mp3`);
 
     try {
-      await execFileChecked('piper', ['--model', model, '--output_file', tmpWav, '--length_scale', String(1 / rateClamped)], {
+      await execFileChecked(piperBinaryPath(), ['--model', model, '--output_file', tmpWav, '--length_scale', String(1 / rateClamped)], {
         stdinText: t,
       });
 
       // MP3 for VK native player
-      await execFileChecked('ffmpeg', ['-y', '-i', tmpWav, '-codec:a', 'libmp3lame', '-qscale:a', '4', tmpMp3]);
+      await execFileChecked('ffmpeg', ['-y', '-i', tmpWav, '-f', 'mp3', '-codec:a', 'libmp3lame', '-qscale:a', '4', tmpMp3]);
 
-      // Atomic-ish write: rename into place
+      // Atomic-ish write: rename within cache dir (same filesystem)
       await fs.rename(tmpMp3, mp3Path);
       await fs.rm(tmpWav, { force: true }).catch(() => {});
 
@@ -150,8 +158,7 @@ async function ensureMp3Cached({ text, locale, rate }) {
   return p;
 }
 
-export function registerTts(app, { makeRateLimiter }) {
-  // Public static mp3 files (hashed, immutable)
+export function registerTtsStatic(app) {
   const staticDir = path.join(cacheRootDir(), 'v1');
   app.use(
     '/tts/v1',
@@ -164,7 +171,9 @@ export function registerTts(app, { makeRateLimiter }) {
       },
     }),
   );
+}
 
+export function registerTtsSpeak(app, { makeRateLimiter }) {
   const limitTts = makeRateLimiter({
     windowMs: 60_000,
     max: Number(process.env.TTS_RPM ?? 30),
@@ -176,6 +185,10 @@ export function registerTts(app, { makeRateLimiter }) {
     const locale = String(req.body?.locale ?? 'en-US').trim() || 'en-US';
     const rate = req.body?.rate != null ? Number(req.body.rate) : NaN;
     try {
+      const isProd = String(process.env.NODE_ENV ?? '').toLowerCase() === 'production';
+      if (isProd && !String(process.env.TTS_KEY_SECRET ?? '').trim()) {
+        return res.status(503).json({ error: 'TTS not configured' });
+      }
       const startedAt = Date.now();
       const r = await ensureMp3Cached({ text, locale, rate });
       res.json({ url: r.relUrl, cached: true, ms: Date.now() - startedAt });
@@ -186,5 +199,11 @@ export function registerTts(app, { makeRateLimiter }) {
       res.status(status).json({ error: msg });
     }
   });
+}
+
+/** @deprecated Use registerTtsStatic + registerTtsSpeak (speak must be after auth). */
+export function registerTts(app, deps) {
+  registerTtsStatic(app);
+  registerTtsSpeak(app, deps);
 }
 
