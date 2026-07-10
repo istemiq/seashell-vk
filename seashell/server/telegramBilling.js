@@ -97,6 +97,7 @@ export async function createStarsInvoiceLink(userId, product) {
     title: copy.title,
     description: copy.description,
     payload,
+    provider_token: '',
     currency: 'XTR',
     prices: [{ label: copy.title, amount: copy.stars }],
   });
