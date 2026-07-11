@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { timingSafeEqualString } from './securityHelpers.js';
 
 function base64UrlEncode(buf) {
   return buf
@@ -38,7 +39,7 @@ export function verifyVkLaunchParams(launchParams, appSecret) {
   const digest = crypto.createHmac('sha256', secret).update(baseString).digest();
   const expected = base64UrlEncode(digest);
 
-  if (expected !== sign) return { ok: false, reason: 'bad_sign' };
+  if (!timingSafeEqualString(expected, sign)) return { ok: false, reason: 'bad_sign' };
   return { ok: true, vkUserId: params.get('vk_user_id') ?? null };
 }
 

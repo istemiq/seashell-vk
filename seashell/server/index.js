@@ -662,6 +662,7 @@ app.post('/api/practice/turn', limitPractice, async (req, res) => {
       ? parseInt(String(sessionIdRaw), 10)
       : null;
   const contentLocale = resolveContentLocale(req);
+  const clientHistory = Array.isArray(req.body?.history) ? req.body.history : null;
   try {
     const out = await enqueueGigaChat(
       () =>
@@ -670,6 +671,7 @@ app.post('/api/practice/turn', limitPractice, async (req, res) => {
           userText,
           sessionId: Number.isFinite(sessionId) ? sessionId : null,
           contentLocale,
+          clientHistory,
         }),
       {
         label: `practice:${req.vkUserId}`,
@@ -984,13 +986,19 @@ async function handleRefreshExamples(req, res) {
     const pol = assertAllowedUserContent(row.word);
     if (!pol.ok) return res.status(400).json({ error: pol.error });
     const contentLocale = resolveContentLocale(req);
+    const previousTexts = (row.examples || []).map((ex) => ex.text).filter(Boolean);
     const generated = await enqueueGigaChat(
-      () => generateWordExamples(row.word, { contentLocale }),
+      () => generateWordExamples(row.word, { contentLocale, avoidExamples: previousTexts }),
       {
       label: `dictionary-refresh:${row.word}`,
     },
     );
-    await saveCachedWordGeneration(row.word, generated, dictionaryGenerationCacheMeta(contentLocale));
+    await saveCachedWordGeneration(
+      row.word,
+      generated,
+      dictionaryGenerationCacheMeta(contentLocale),
+      { variant: `refresh:${Date.now()}` },
+    );
     const saved = await replaceExamplesForWord(req.vkUserId, id, generated);
     if (accessMode === 'credits') {
       await chargeRefreshCredit(req.vkUserId);

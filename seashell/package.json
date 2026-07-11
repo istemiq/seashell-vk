@@ -18,6 +18,9 @@
     "placement:show": "node scripts/placement-show.mjs",
     "api": "node server/index.js",
     "test": "node --test server/tests/*.test.js",
+    "stats": "node server/scripts/usage-stats.mjs",
+    "stats:daily": "node server/scripts/usage-stats-daily.mjs",
+    "stats:daily:dry": "node server/scripts/usage-stats-daily.mjs --dry-run",
     "compose": "docker compose up --build",
     "compose:detach": "docker compose up --build -d"
   },

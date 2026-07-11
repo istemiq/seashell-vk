@@ -17,6 +17,11 @@ import {
 } from './exampleFields.js';
 import { WORD_EXAMPLE_COUNT } from './dictionaryConstants.js';
 import {
+  examplesOverlapRatio,
+  refreshAvoidExamplesNote,
+  refreshExamplesTemperature,
+} from './dictionaryRefreshHelpers.js';
+import {
   getInputModeRules,
   getPhraseEntryBanner,
   headwordQuickResolveSystemPrompt,
@@ -31,12 +36,21 @@ import { assertPayloadMatchesContentLocale } from './localeValidation.js';
 import {
   loadDictionaryFormatSamples,
   loadDictionarySystemPrompt,
+  loadPracticeExpertTurnPrompt,
   loadPracticeTurnPrompt,
+  loadPracticeWordTurnPrompt,
   loadWordExamplesUserPrompt,
   listPromptLocaleStatus,
 } from './promptLoader.js';
+import {
+  getPracticeExpert,
+  PRACTICE_EXPERT_START_MARKER,
+} from './practiceExperts.js';
+import { sanitizePracticeEcho, sanitizeWordPracticeEcho, sanitizeWordPracticeCorrections } from './practiceEcho.js';
+import { extractActiveThreadHint } from './practiceContext.js';
 import { resolveLlmModel, resolveLlmProvider } from './llmProvider.js';
 import { openRouterChatCompletion } from './openrouter.js';
+import { deepSeekChatCompletion } from './deepseek.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -428,10 +442,14 @@ async function gigaChatRawCompletion({ model, messages, temperature, max_tokens,
   return content;
 }
 
-async function llmChatCompletion({ messages, temperature, max_tokens, top_p, repetition_penalty }) {
+export async function llmChatCompletion({ messages, temperature, max_tokens, top_p, repetition_penalty }) {
   const model = resolveLlmModel();
-  if (resolveLlmProvider() === 'openrouter') {
+  const provider = resolveLlmProvider();
+  if (provider === 'openrouter') {
     return openRouterChatCompletion({ model, messages, temperature, max_tokens, top_p });
+  }
+  if (provider === 'deepseek') {
+    return deepSeekChatCompletion({ model, messages, temperature, max_tokens, top_p, repetition_penalty });
   }
   return gigaChatRawCompletion({ model, messages, temperature, max_tokens, top_p, repetition_penalty });
 }
@@ -458,21 +476,34 @@ function wordExamplesTemperature() {
   return Math.min(2, Math.max(0, n));
 }
 
-export async function generateWordExamples(word, { contentLocale } = {}) {
+export async function generateWordExamples(word, { contentLocale, avoidExamples = [] } = {}) {
   const locale = normalizeContentLocale(contentLocale);
   const model = resolveLlmModel();
   const token = resolveLlmProvider() === 'gigachat' ? await getAccessToken() : null;
-  const userContent = fillPrompt(word, locale);
+  const avoidList = Array.isArray(avoidExamples)
+    ? avoidExamples.map((t) => String(t ?? '').trim()).filter(Boolean)
+    : [];
+  const isRefresh = avoidList.length > 0;
+  const userContent =
+    fillPrompt(word, locale) + (isRefresh ? refreshAvoidExamplesNote(avoidList) : '');
+  const baseTemperature = isRefresh
+    ? refreshExamplesTemperature(wordExamplesTemperature())
+    : wordExamplesTemperature();
 
   let lastErr;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const retryNote =
       (attempt > 0 ? localeDictionaryRetryNote(locale) : '') + phraseInputRetryNote(word);
+    const attemptTemperature = isRefresh
+      ? Math.min(0.9, baseTemperature + attempt * 0.1)
+      : attempt > 0
+        ? Math.min(0.55, wordExamplesTemperature() + 0.08)
+        : baseTemperature;
     const content = await gigaChatWordExamplesCompletion(
       userContent + retryNote,
       model,
       token,
-      attempt > 0 ? Math.min(0.55, wordExamplesTemperature() + 0.08) : wordExamplesTemperature(),
+      attemptTemperature,
       locale,
     );
 
@@ -516,6 +547,20 @@ export async function generateWordExamples(word, { contentLocale } = {}) {
     try {
       assertHeadwordMatchesInputShape(word, headwordEn);
       assertPayloadMatchesContentLocale(locale, result);
+      if (isRefresh) {
+        const newTexts = trimmed.map((ex) => englishLineFromItem(ex));
+        const overlap = examplesOverlapRatio(avoidList, newTexts);
+        if (overlap >= 0.35) {
+          lastErr = new Error(
+            `Refresh examples too similar to previous set (${Math.round(overlap * 100)}% overlap)`,
+          );
+          console.warn(
+            `[gigachat] dictionary refresh overlap ${locale}, attempt ${attempt + 1}/4`,
+            lastErr.message,
+          );
+          continue;
+        }
+      }
       return result;
     } catch (e) {
       lastErr = e;
@@ -556,18 +601,16 @@ export async function resolveHeadwordEnQuick(word, contentLocale = 'en') {
 
 export { wordInputLooksEnglish } from './dictionaryInputMode.js';
 
-function buildPracticePrompt(userText, historyLines, contentLocale) {
+function buildPracticePrompt(userText, dialogueSummary, historyBlock, contentLocale) {
   const locale = normalizeContentLocale(contentLocale);
-  const h =
-    !historyLines?.length
-      ? '(empty)'
-      : historyLines
-          .map((m) => `${m.role}: ${m.text}`)
-          .join('\n')
-          .slice(0, 16000);
+  const h = historyBlock ?? '(empty)';
+  const summary = String(dialogueSummary ?? '').trim() || '(none yet)';
+  const activeThread = extractActiveThreadHint(h);
   return loadPracticeTurnPrompt(locale)
     .replace('{{USER_TEXT}}', String(userText).trim().slice(0, 4000))
-    .replace('{{HISTORY}}', h);
+    .replace('{{HISTORY}}', h)
+    .replace('{{DIALOGUE_SUMMARY}}', summary.slice(0, 900))
+    .replace('{{ACTIVE_THREAD}}', activeThread);
 }
 
 function extractJsonObject(text) {
@@ -602,25 +645,41 @@ function normalizePracticeTurn(obj) {
 }
 
 /** Один ход диалога: эхо реплики, правки, ответ собеседника. */
-export async function generatePracticeTurn({ userText, history, contentLocale } = {}) {
+export async function generatePracticeTurn({
+  userText,
+  dialogueSummary,
+  historyBlock,
+  history,
+  contentLocale,
+} = {}) {
   const locale = normalizeContentLocale(contentLocale);
-  const historyLines = Array.isArray(history)
-    ? history
-        .filter((m) => m && typeof m.text === 'string')
-        .slice(-28)
-        .map((m) => ({
-          role: m.role === 'assistant' ? 'Assistant' : 'User',
-          text: m.text.slice(0, 1200),
-        }))
-    : [];
-  const userContent = buildPracticePrompt(userText, historyLines, locale);
+  let block = historyBlock ?? '(empty)';
+  let summary = dialogueSummary;
+  if (block === '(empty)' && Array.isArray(history) && history.length) {
+    const historyLines = history
+      .filter((m) => m && typeof m.text === 'string')
+      .slice(-28)
+      .map((m) => ({
+        role: m.role === 'assistant' ? 'Assistant' : 'User',
+        text: m.text.slice(0, 1200),
+      }));
+    block =
+      !historyLines.length
+        ? '(empty)'
+        : historyLines
+            .map((m) => `${m.role}: ${m.text}`)
+            .join('\n')
+            .slice(0, 16000);
+    summary = summary ?? '(none yet)';
+  }
+  const userContent = buildPracticePrompt(userText, summary, block, locale);
 
   const content = await llmChatCompletion({
     messages: [
       {
         role: 'system',
         content:
-          'You output only valid JSON when asked. No markdown fences. Keys: echo, corrections, reply. The "reply" must read like a sharp, natural native speaker in chat — specific, coherent with prior turns, not generic and not therapeutic.',
+          'You output only valid JSON when asked. No markdown fences. Keys: echo, corrections, reply. The "reply" must read like a sharp, natural native speaker in chat — specific, coherent with prior turns, not generic and not therapeutic. Never re-ask a premise the user already rejected or doubted.',
       },
       { role: 'user', content: userContent },
     ],
@@ -631,5 +690,173 @@ export async function generatePracticeTurn({ userText, history, contentLocale } 
   });
 
   const raw = extractJsonObject(content);
-  return normalizePracticeTurn(raw);
+  const turn = normalizePracticeTurn(raw);
+  turn.echo = sanitizePracticeEcho(userText, turn.echo);
+  return turn;
+}
+
+function buildPracticeExpertPrompt(userText, dialogueSummary, historyBlock, contentLocale, expertId) {
+  const expert = getPracticeExpert(expertId);
+  if (!expert) {
+    throw new Error('Unknown expert role');
+  }
+  const h = historyBlock ?? '(empty)';
+  const summary = String(dialogueSummary ?? '').trim() || '(none yet)';
+  const activeThread = extractActiveThreadHint(h);
+  return loadPracticeExpertTurnPrompt(contentLocale, expert)
+    .replaceAll('{{USER_TEXT}}', String(userText).trim().slice(0, 4000))
+    .replaceAll('{{HISTORY}}', h)
+    .replaceAll('{{DIALOGUE_SUMMARY}}', summary.slice(0, 900))
+    .replaceAll('{{ACTIVE_THREAD}}', activeThread);
+}
+
+const PRACTICE_EXPERT_SYSTEM_PROMPT =
+  'You output only valid JSON when asked. No markdown fences. Keys: echo, corrections, reply. ' +
+  '"reply" is always English at native conversational level (not slang). ' +
+  '"corrections" gloss is in the learner L1 when provided. ' +
+  'On session start (user message __start__), echo and corrections must be null; reply is the expert opening with a topic offer. ' +
+  'Echo must restate the user line with typo fixes only — never invent a different question. Reply must address the Last user message, not a paraphrased echo. ' +
+  'After the user accepts or engages with a topic, develop that thread — do not offer to switch topics every turn. ' +
+  'Short user replies comment on your previous message; keep the same subject (names, examples) in view. ' +
+  'You are an AI language-practice persona, not a licensed professional.';
+
+/** Expert practice turn: role-play specialist for English practice (all content locales). */
+export async function generatePracticeExpertTurn({
+  userText,
+  dialogueSummary,
+  historyBlock,
+  history,
+  contentLocale,
+  expertId,
+} = {}) {
+  const locale = normalizeContentLocale(contentLocale);
+  let block = historyBlock;
+  let summary = dialogueSummary;
+  if (!block && Array.isArray(history)) {
+    const historyLines = history
+      .filter((m) => m && typeof m.text === 'string')
+      .slice(-28)
+      .map((m) => ({
+        role: m.role === 'assistant' ? 'Assistant' : 'User',
+        text: m.text.slice(0, 1200),
+      }));
+    block =
+      !historyLines.length
+        ? '(empty)'
+        : historyLines
+            .map((m) => `${m.role}: ${m.text}`)
+            .join('\n')
+            .slice(0, 16000);
+    summary = summary ?? '(none yet)';
+  }
+  const userContent = buildPracticeExpertPrompt(userText, summary, block, locale, expertId);
+
+  const content = await llmChatCompletion({
+    messages: [
+      { role: 'system', content: PRACTICE_EXPERT_SYSTEM_PROMPT },
+      { role: 'user', content: userContent },
+    ],
+    temperature: 0.48,
+    top_p: 0.92,
+    max_tokens: 900,
+    repetition_penalty: 1.06,
+  });
+
+  const raw = extractJsonObject(content);
+  const turn = normalizePracticeTurn(raw);
+  if (String(userText).trim() === PRACTICE_EXPERT_START_MARKER) {
+    return { echo: null, corrections: null, reply: turn.reply };
+  }
+  turn.echo = sanitizePracticeEcho(userText, turn.echo);
+  return turn;
+}
+
+function formatWordExamplesBlock(examples) {
+  if (!Array.isArray(examples) || !examples.length) return '(none)';
+  return examples
+    .slice(0, 3)
+    .map((ex) => {
+      const en = englishLineFromItem(ex);
+      const ru = russianLineFromItem(ex);
+      if (!en) return null;
+      return ru ? `- ${en} — ${ru}` : `- ${en}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function buildPracticeWordPrompt(userText, dialogueSummary, historyBlock, contentLocale, wordMeta) {
+  const locale = normalizeContentLocale(contentLocale);
+  const h = historyBlock ?? '(empty)';
+  const summary = String(dialogueSummary ?? '').trim() || '(none yet)';
+  const lemma = String(wordMeta?.word ?? '').trim();
+  const gloss = String(wordMeta?.gloss_ru ?? wordMeta?.glossRu ?? '').trim() || '(no gloss)';
+  const examplesBlock = formatWordExamplesBlock(wordMeta?.examples);
+  return loadPracticeWordTurnPrompt(locale, {
+    targetWord: lemma,
+    wordGloss: gloss,
+    wordExamplesBlock: examplesBlock,
+  })
+    .replace('{{USER_TEXT}}', String(userText).trim().slice(0, 4000))
+    .replace('{{HISTORY}}', h)
+    .replace('{{DIALOGUE_SUMMARY}}', summary.slice(0, 900));
+}
+
+const PRACTICE_WORD_SYSTEM_PROMPT =
+  'You output only valid JSON when asked. No markdown fences. Keys: echo, corrections, reply. ' +
+  'Keep replies very short and simple (A2). React to what the user said; never repeat template questions. ' +
+  'Echo: preserve the target phrase; never swap it for synonyms. Corrections: real errors only, never style variants. ' +
+  'On session start (__start__), echo and corrections must be null.';
+
+/** Word drill: short simple dialogue focused on one dictionary lemma. */
+export async function generatePracticeWordTurn({
+  userText,
+  dialogueSummary,
+  historyBlock,
+  history,
+  contentLocale,
+  wordMeta,
+} = {}) {
+  const locale = normalizeContentLocale(contentLocale);
+  let block = historyBlock;
+  let summary = dialogueSummary;
+  if (!block && Array.isArray(history)) {
+    const historyLines = history
+      .filter((m) => m && typeof m.text === 'string')
+      .slice(-20)
+      .map((m) => ({
+        role: m.role === 'assistant' ? 'Assistant' : 'User',
+        text: m.text.slice(0, 800),
+      }));
+    block =
+      !historyLines.length
+        ? '(empty)'
+        : historyLines
+            .map((m) => `${m.role}: ${m.text}`)
+            .join('\n')
+            .slice(0, 12000);
+    summary = summary ?? '(none yet)';
+  }
+  const userContent = buildPracticeWordPrompt(userText, summary, block, locale, wordMeta);
+
+  const content = await llmChatCompletion({
+    messages: [
+      { role: 'system', content: PRACTICE_WORD_SYSTEM_PROMPT },
+      { role: 'user', content: userContent },
+    ],
+    temperature: 0.45,
+    top_p: 0.9,
+    max_tokens: 450,
+    repetition_penalty: 1.05,
+  });
+
+  const raw = extractJsonObject(content);
+  const turn = normalizePracticeTurn(raw);
+  if (String(userText).trim() === PRACTICE_EXPERT_START_MARKER) {
+    return { echo: null, corrections: null, reply: turn.reply };
+  }
+  const targetLemma = String(wordMeta?.word ?? '').trim();
+  turn.echo = sanitizeWordPracticeEcho(userText, turn.echo, targetLemma);
+  turn.corrections = sanitizeWordPracticeCorrections(userText, turn.corrections, targetLemma);
+  return turn;
 }

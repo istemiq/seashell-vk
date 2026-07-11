@@ -16,6 +16,26 @@ function fillTemplate(raw, vars) {
   return out;
 }
 
+/** Maps promptLocales camelCase fields to {{UPPER_SNAKE}} template placeholders. */
+function templateVarsFromLocale(locale) {
+  const v = getPromptLocaleVars(locale);
+  return {
+    LEARNER_L1: v.learnerL1,
+    CORRECTIONS_LANGUAGE: v.correctionsLanguage,
+    LAWFUL_SPEECH_BLOCK: v.lawfulSpeechBlock,
+    LEARNER_AUDIENCE: v.learnerAudience,
+    TRANSLATION_LANGUAGE: v.translationLanguage,
+    INPUT_SCRIPT_NOTE: v.inputScriptNote,
+    INPUT_SCRIPT_EXAMPLE: v.inputScriptExample,
+    LEGAL_CONTENT_NOTE: v.legalContentNote,
+    VERB_LABEL_PRESENT: v.verbLabelPresent,
+    VERB_LABEL_PAST: v.verbLabelPast,
+    VERB_LABEL_PARTICIPLE: v.verbLabelParticiple,
+    TRANSLATION_SCRIPT: v.translationScript,
+    TRANSLATION_SCRIPT_NOTE: v.translationScriptNote,
+  };
+}
+
 function readTemplate(name) {
   return fs.readFileSync(path.join(TEMPLATES_DIR, name), 'utf8');
 }
@@ -53,8 +73,35 @@ export function loadDictionaryFormatSamples(locale) {
 
 /** Practice turn user prompt template. */
 export function loadPracticeTurnPrompt(locale) {
-  const vars = getPromptLocaleVars(locale);
-  return fillTemplate(readTemplate('practice-turn.template.txt'), vars);
+  return fillTemplate(readTemplate('practice-turn.template.txt'), templateVarsFromLocale(locale));
+}
+
+/** Expert practice turn user prompt (role substituted from practiceExperts). */
+export function loadPracticeExpertTurnPrompt(locale, expert) {
+  const vars = {
+    ...templateVarsFromLocale(locale),
+    EXPERT_ROLE_TITLE: expert.roleTitle,
+    EXPERT_DOMAIN: expert.domain,
+    EXPERT_STYLE: expert.style,
+    SAMPLE_TOPICS: expert.sampleTopics,
+    EXPERT_SAFEGUARDS: expert.safeguards
+      ? `\nRole-specific rules:\n${expert.safeguards}\n`
+      : '',
+    START_MARKER: '__start__',
+  };
+  return fillTemplate(readTemplate('practice-expert-turn.template.txt'), vars);
+}
+
+/** Word-focused practice dialogue for one dictionary lemma. */
+export function loadPracticeWordTurnPrompt(locale, { targetWord, wordGloss, wordExamplesBlock }) {
+  const vars = {
+    ...templateVarsFromLocale(locale),
+    TARGET_WORD: targetWord,
+    WORD_GLOSS: wordGloss || '(no gloss)',
+    WORD_EXAMPLES_BLOCK: wordExamplesBlock || '(none)',
+    START_MARKER: '__start__',
+  };
+  return fillTemplate(readTemplate('practice-word-turn.template.txt'), vars);
 }
 
 export function listPromptLocaleStatus() {

@@ -223,3 +223,13 @@ export async function refreshWordExamples(wordId) {
   }
   return JSON.parse(text);
 }
+
+/** @returns {Promise<{ premium: boolean }>} */
+export async function fetchUserPlan() {
+  const r = await request('/user/plan');
+  const text = await r.text();
+  if (!r.ok) {
+    throw new Error(messageFromStatusAndBody(r.status, text));
+  }
+  return JSON.parse(text);
+}

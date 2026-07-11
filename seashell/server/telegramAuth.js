@@ -1,13 +1,20 @@
 import crypto from 'crypto';
+import { timingSafeEqualString } from './securityHelpers.js';
 
-/** Максимальный возраст initData (сек). 0 = не проверять. */
-const DEFAULT_MAX_AUTH_AGE_SEC = 86400;
+/** Максимальный возраст initData (сек). 0 = не проверять. По умолчанию 1 час. */
+function resolveMaxAuthAgeSec() {
+  const raw = String(process.env.TELEGRAM_INIT_DATA_MAX_AGE_SEC ?? '').trim();
+  if (raw === '0') return 0;
+  const n = parseInt(raw, 10);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 3600;
+}
 
 /**
  * Проверка подписи Telegram Mini App initData.
  * @see https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
  */
-export function verifyTelegramInitData(initData, botToken, { maxAgeSec = DEFAULT_MAX_AUTH_AGE_SEC } = {}) {
+export function verifyTelegramInitData(initData, botToken, { maxAgeSec = resolveMaxAuthAgeSec() } = {}) {
   const raw = String(initData ?? '').trim();
   const token = String(botToken ?? '').trim();
   if (!raw || !token) return { ok: false, reason: 'missing' };
@@ -27,7 +34,7 @@ export function verifyTelegramInitData(initData, botToken, { maxAgeSec = DEFAULT
   const secretKey = crypto.createHmac('sha256', 'WebAppData').update(token).digest();
   const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
 
-  if (calculatedHash !== hash) return { ok: false, reason: 'bad_hash' };
+  if (!timingSafeEqualString(calculatedHash, hash)) return { ok: false, reason: 'bad_hash' };
 
   const authDate = parseInt(params.get('auth_date') ?? '', 10);
   if (Number.isFinite(authDate) && maxAgeSec > 0) {

@@ -32,6 +32,10 @@ function resolveDatabaseUrl() {
 
 const pool = new Pool({ connectionString: resolveDatabaseUrl() });
 
+export function getDbPool() {
+  return pool;
+}
+
 export async function initDb() {
   await pool.query(`CREATE TABLE IF NOT EXISTS words (
     id SERIAL PRIMARY KEY,
@@ -110,6 +114,22 @@ export async function initDb() {
        LOWER(request_word), model, prompt_version, example_count, content_locale
      )`,
   );
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS ad_views (
+    id SERIAL PRIMARY KEY,
+    vk_user_id BIGINT NOT NULL,
+    view_type VARCHAR(50) NOT NULL,
+    created_at BIGINT NOT NULL
+  )`);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_ad_views_user_time ON ad_views (vk_user_id, created_at)`
+  );
+
+  const { initPracticeDb } = await import('./practiceDb.js');
+  await initPracticeDb(pool);
+
+  const { initBillingDb } = await import('./billingDb.js');
+  await initBillingDb();
 }
 
 function parseVerbUsageColumn(raw) {
@@ -135,20 +155,23 @@ function normalizeCacheWord(word) {
     .toLowerCase();
 }
 
-function dictionaryCacheKey({
+export function dictionaryCacheKey({
   requestWord,
   model,
   promptVersion,
   exampleCount = WORD_EXAMPLE_COUNT,
   contentLocale = 'ru',
+  variant = null,
 }) {
-  return [
+  const parts = [
     normalizeCacheWord(requestWord),
     String(model || 'GigaChat').trim(),
     String(promptVersion || 'v1').trim(),
     String(exampleCount),
     String(contentLocale || 'ru').trim().toLowerCase(),
-  ].join('\u001f');
+  ];
+  if (variant) parts.push(String(variant));
+  return parts.join('\u001f');
 }
 
 function payloadFromStoredGeneration(raw) {
@@ -201,11 +224,16 @@ export async function getCachedWordGeneration(requestWord, meta = dictionaryGene
   return payloadFromStoredGeneration(rows[0]?.payload);
 }
 
-export async function saveCachedWordGeneration(requestWord, payload, meta = dictionaryGenerationCacheMeta()) {
+export async function saveCachedWordGeneration(
+  requestWord,
+  payload,
+  meta = dictionaryGenerationCacheMeta(),
+  { variant = null } = {},
+) {
   const normalized = payloadFromStoredGeneration(payload);
   if (!normalized) return null;
   const now = Date.now();
-  const key = dictionaryCacheKey({ requestWord, ...meta });
+  const key = dictionaryCacheKey({ requestWord, ...meta, variant });
   await pool.query(
     `INSERT INTO dictionary_generation_cache
       (cache_key, request_word, headword_en, model, prompt_version, example_count, content_locale, payload, created_at, last_used_at, use_count)
@@ -428,6 +456,56 @@ export async function replaceExamplesForWord(vkUserId, wordId, payload) {
 export async function deleteWord(vkUserId, wordId) {
   const r = await pool.query('DELETE FROM words WHERE id = $1 AND vk_user_id = $2', [wordId, vkUserId]);
   return r.rowCount > 0;
+}
+
+export async function getLastAdViewTime(vkUserId, viewType) {
+  const { rows } = await pool.query(
+    'SELECT COALESCE(MAX(created_at), 0)::bigint AS t FROM ad_views WHERE vk_user_id = $1 AND view_type = $2',
+    [vkUserId, viewType],
+  );
+  return Number(rows[0]?.t ?? 0);
+}
+
+export async function countWordsSince(vkUserId, sinceMs) {
+  const { rows } = await pool.query(
+    'SELECT COUNT(*)::int AS n FROM words WHERE vk_user_id = $1 AND created_at > $2',
+    [vkUserId, sinceMs],
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
+/** @deprecated use countWordsSince with getLastAdViewTime */
+export async function countWordsAddedToday(vkUserId) {
+  return countWordsSince(vkUserId, 0);
+}
+
+export async function recordAdView(vkUserId, viewType) {
+  await pool.query(
+    'INSERT INTO ad_views (vk_user_id, view_type, created_at) VALUES ($1, $2, $3)',
+    [vkUserId, viewType, Date.now()]
+  );
+}
+
+export async function countAdViewsTotal(vkUserId, viewType) {
+  const { rows } = await pool.query(
+    'SELECT COUNT(*)::int AS n FROM ad_views WHERE vk_user_id = $1 AND view_type = $2',
+    [vkUserId, viewType],
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
+/** @deprecated use countAdViewsTotal */
+export async function countAdViewsToday(vkUserId, viewType) {
+  return countAdViewsTotal(vkUserId, viewType);
+}
+
+/** Admin: start a fresh free batch without deleting user data. */
+export async function resetUserQuotaForAdmin(vkUserId) {
+  const now = Date.now();
+  await pool.query(
+    'INSERT INTO ad_views (vk_user_id, view_type, created_at) VALUES ($1, $2, $3), ($1, $4, $3)',
+    [vkUserId, 'words', now, 'practice'],
+  );
 }
 
 export async function findWordByLemma(vkUserId, wordNorm, contentLocale = 'ru') {

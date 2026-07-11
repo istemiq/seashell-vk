@@ -46,6 +46,7 @@ export const Practice = ({ id }) => {
   const goBackOrHome = useNavigateBackOrHome();
   const [vkReady, setVkReady] = useState(() => !!getVkUserIdFromLocation());
   const [turns, setTurns] = useState([]);
+  const [sessionId, setSessionId] = useState(null);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -99,10 +100,13 @@ export const Practice = ({ id }) => {
       setInput('');
       try {
         const history = historyForApi();
-        const { echo, corrections, reply } = await practiceApi.postPracticeTurn({
+        const out = await practiceApi.postPracticeTurn({
           userText,
           history,
+          sessionId,
         });
+        if (out.sessionId != null) setSessionId(out.sessionId);
+        const { echo, corrections, reply } = out;
         setTurns((prev) => [
           ...prev,
           { userText, echo, corrections: corrections || null, reply },
@@ -114,7 +118,7 @@ export const Practice = ({ id }) => {
         setLoading(false);
       }
     },
-    [loading, historyForApi],
+    [loading, historyForApi, sessionId],
   );
 
   const sendText = useCallback(() => {

@@ -18,7 +18,15 @@ PLACEHOLDER = {
 }
 
 SECTIONS = [
-    ("# --- Telegram ---", ["TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOW_LOCALHOST_HEADER"]),
+    (
+        "# --- Telegram ---",
+        [
+            "TELEGRAM_BOT_TOKEN",
+            "TELEGRAM_ALLOW_LOCALHOST_HEADER",
+            "TELEGRAM_INIT_DATA_MAX_AGE_SEC",
+            "TELEGRAM_STATS_CHAT_IDS",
+        ],
+    ),
     ("# --- Сервер ---", ["PORT", "NODE_ENV"]),
     ("# --- База ---", ["DATABASE_URL"]),
     ("# --- CORS ---", ["CORS_ORIGINS"]),
@@ -55,7 +63,7 @@ SECTIONS = [
 ]
 
 DEFAULTS = {
-    "TELEGRAM_ALLOW_LOCALHOST_HEADER": "1",
+    "TELEGRAM_ALLOW_LOCALHOST_HEADER": "0",
     "PORT": "3001",
     "NODE_ENV": "production",
     "LLM_PROVIDER": "openrouter",

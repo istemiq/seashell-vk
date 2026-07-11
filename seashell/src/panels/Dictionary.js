@@ -86,6 +86,7 @@ export const Dictionary = ({ id }) => {
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [premium, setPremium] = useState(false);
   const [exampleIdx, setExampleIdx] = useState(0);
   const [wordSetsModalOpen, setWordSetsModalOpen] = useState(false);
   const [modalNewSetName, setModalNewSetName] = useState('');
@@ -181,6 +182,22 @@ export const Dictionary = ({ id }) => {
   useEffect(() => {
     loadList();
   }, [loadList]);
+
+  useEffect(() => {
+    if (!vkUserId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const plan = await api.fetchUserPlan();
+        if (!cancelled) setPremium(Boolean(plan?.premium));
+      } catch {
+        if (!cancelled) setPremium(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vkUserId]);
 
   const loadSets = useCallback(async () => {
     if (!vkUserId) return;
@@ -315,7 +332,7 @@ export const Dictionary = ({ id }) => {
   const verbUsageRows = Array.isArray(detail?.verb_usage) ? detail.verb_usage : [];
   const showVerbUsage = verbUsageRows.length === 3;
 
-  const headerTitle = selectedId != null ? (detail?.word || '…') : 'Словарь';
+  const headerTitle = selectedId != null ? <span dir="auto">{detail?.word || '…'}</span> : 'Словарь';
   const activeSetName =
     screen === 'group' && Number.isFinite(activeSetId)
       ? sets.find((s) => Number(s.id) === Number(activeSetId))?.name ?? 'Группа'
@@ -777,7 +794,7 @@ export const Dictionary = ({ id }) => {
                       </Button>
                     }
                   >
-                    {w.word}
+                    <span dir="auto">{w.word}</span>
                   </Cell>
                 ))}
             </Group>
@@ -798,7 +815,7 @@ export const Dictionary = ({ id }) => {
               <Box style={{ marginBottom: 12 }}>
                 <Text weight="2">Группы</Text>
                 {selectedSetNames.length ? (
-                  <Text style={{ marginTop: 6, lineHeight: 1.45 }}>{selectedSetNames.join(', ')}</Text>
+                  <Text style={{ marginTop: 6, lineHeight: 1.45 }} dir="auto">{selectedSetNames.join(', ')}</Text>
                 ) : (
                   <Footnote style={{ marginTop: 6 }}>Пока без групп.</Footnote>
                 )}
@@ -827,7 +844,7 @@ export const Dictionary = ({ id }) => {
               <Box>
                 <Text weight="2">Значение слова</Text>
                 {detail.gloss_ru ? (
-                  <Text style={{ marginTop: 6, lineHeight: 1.45 }}>{detail.gloss_ru}</Text>
+                  <Text style={{ marginTop: 6, lineHeight: 1.45 }} dir="auto">{detail.gloss_ru}</Text>
                 ) : (
                   <Footnote style={{ marginTop: 6 }}>
                     Похоже, это не слово или редкий неологизм — значение не показываю. Нажми «Обновить примеры», если
@@ -849,12 +866,12 @@ export const Dictionary = ({ id }) => {
                       const ru = lineFromExampleField(row?.translation);
                       return (
                         <Box key={`verb-usage-${i}`} style={{ marginTop: i === 0 ? 10 : 14 }}>
-                          <Footnote style={{ lineHeight: 1.4, opacity: 0.92 }}>{label}</Footnote>
+                          <Footnote style={{ lineHeight: 1.4, opacity: 0.92 }} dir="auto">{label}</Footnote>
                           {en ? (
-                            <Text style={{ marginTop: 6, lineHeight: 1.45 }}>{en}</Text>
+                            <Text style={{ marginTop: 6, lineHeight: 1.45 }} dir="auto">{en}</Text>
                           ) : null}
                           {ru ? (
-                            <Text style={{ marginTop: 6, lineHeight: 1.45, opacity: 0.88 }}>{ru}</Text>
+                            <Text style={{ marginTop: 6, lineHeight: 1.45, opacity: 0.88 }} dir="auto">{ru}</Text>
                           ) : null}
                         </Box>
                       );
@@ -866,14 +883,14 @@ export const Dictionary = ({ id }) => {
                 <Separator style={{ margin: '12px 0' }} />
                 {currentExampleText ? (
                   <>
-                    <Text style={{ lineHeight: 1.45 }}>{currentExampleText}</Text>
+                    <Text style={{ lineHeight: 1.45 }} dir="auto">{currentExampleText}</Text>
                     {currentExampleRu ? (
-                      <Text style={{ marginTop: 12, lineHeight: 1.45, opacity: 0.88 }}>{currentExampleRu}</Text>
+                      <Text style={{ marginTop: 12, lineHeight: 1.45, opacity: 0.88 }} dir="auto">{currentExampleRu}</Text>
                     ) : (
                       <Footnote style={{ marginTop: 10 }}>Перевода этой карточки нет.</Footnote>
                     )}
                     {legacyExampleNoteRu ? (
-                      <Footnote style={{ marginTop: 10, lineHeight: 1.5, opacity: 0.92 }}>
+                      <Footnote style={{ marginTop: 10, lineHeight: 1.5, opacity: 0.92 }} dir="auto">
                         Пометка (старая карточка): {legacyExampleNoteRu}
                       </Footnote>
                     ) : null}
@@ -885,16 +902,20 @@ export const Dictionary = ({ id }) => {
                 )}
               </Box>
               <Box style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-                <Button
-                  size="l"
-                  stretched
-                  loading={refreshing}
-                  disabled={refreshing}
-                  mode="secondary"
-                  onClick={refreshExamples}
-                >
-                  Обновить примеры
-                </Button>
+                {premium ? (
+                  <Button
+                    size="l"
+                    stretched
+                    loading={refreshing}
+                    disabled={refreshing}
+                    mode="secondary"
+                    onClick={refreshExamples}
+                  >
+                    Обновить примеры
+                  </Button>
+                ) : (
+                  <Footnote dir="auto">Обновление примеров — только в Premium.</Footnote>
+                )}
                 <Button
                   size="l"
                   stretched

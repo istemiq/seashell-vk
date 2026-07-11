@@ -1,6 +1,14 @@
-import { fetch as undiciFetch } from 'undici';
+import { fetch as undiciFetch, ProxyAgent } from 'undici';
 
 const CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions';
+
+function openRouterDispatcher() {
+  const proxy = String(process.env.OPENROUTER_HTTP_PROXY || process.env.HTTPS_PROXY || '')
+    .trim()
+    .replace(/^["']|["']$/g, '');
+  if (!proxy) return undefined;
+  return new ProxyAgent(proxy);
+}
 
 function mapNetErr(err, phase) {
   const raw = String(err?.cause?.message || err?.message || err);
@@ -46,12 +54,14 @@ export async function openRouterChatCompletion({ model, messages, temperature, m
 
   let res;
   try {
+    const dispatcher = openRouterDispatcher();
     res = await undiciFetch(CHAT_URL, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
       headersTimeout: 25_000,
       bodyTimeout: 120_000,
+      ...(dispatcher ? { dispatcher } : {}),
     });
   } catch (e) {
     throw mapNetErr(e, 'chat');
