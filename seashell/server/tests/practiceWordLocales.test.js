@@ -16,11 +16,14 @@ describe('practice word prompts — all locales', () => {
         wordExamplesBlock: '- The soil is fertile.',
       });
       assert.match(prompt, /fertile/i);
+      assert.match(prompt, /phrase practice/i);
       assert.match(prompt, /sample gloss/);
       assert.match(prompt, new RegExp(vars.correctionsLanguage, 'i'));
       assert.match(prompt, new RegExp(vars.learnerL1.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
       const leftovers = prompt.match(/\{\{[A-Z0-9_]+\}\}/g) ?? [];
-      const bad = leftovers.filter((p) => !['{{USER_TEXT}}', '{{HISTORY}}', '{{DIALOGUE_SUMMARY}}'].includes(p));
+      const bad = leftovers.filter(
+        (p) => !['{{USER_TEXT}}', '{{HISTORY}}', '{{DIALOGUE_SUMMARY}}'].includes(p),
+      );
       assert.equal(bad.length, 0, `unresolved placeholders: ${bad.join(', ')}`);
     });
   }

@@ -95,15 +95,15 @@ export function sanitizeWordPracticeEcho(userText, echo, targetWord) {
   return ech;
 }
 
-const WORD_VARIANT_CORRECTION =
-  /another way|instead of|you could say|try saying|maybe you meant|можно сказать|лучше сказать|вариант|перефраз/i;
+const TARGET_PHRASE_SYNONYM_NAG =
+  /maybe you meant|you could say.*instead|лучше сказать.*вместо|instead of\s+["']?(as of|thee|along the lines)/i;
 
-/** Word drill: no "style variants" when the learner correctly used the target phrase. */
+/** Word drill: allow naturalness tips; block only "swap the practiced phrase for a synonym". */
 export function sanitizeWordPracticeCorrections(userText, corrections, targetWord) {
   if (corrections == null || corrections === '') return null;
   const text = String(corrections).trim();
   if (!text) return null;
-  if (userUsedTargetPhrase(userText, targetWord) && WORD_VARIANT_CORRECTION.test(text)) {
+  if (userUsedTargetPhrase(userText, targetWord) && TARGET_PHRASE_SYNONYM_NAG.test(text)) {
     return null;
   }
   return text;

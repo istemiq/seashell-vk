@@ -804,8 +804,9 @@ function buildPracticeWordPrompt(userText, dialogueSummary, historyBlock, conten
 
 const PRACTICE_WORD_SYSTEM_PROMPT =
   'You output only valid JSON when asked. No markdown fences. Keys: echo, corrections, reply. ' +
-  'Keep replies very short and simple (A2). React to what the user said; never repeat template questions. ' +
-  'Echo: preserve the target phrase; never swap it for synonyms. Corrections: real errors only, never style variants. ' +
+  'Phrase practice: explain usage, ask the learner to say a sentence. ' +
+  'Corrections: use when English is understandable but unnatural; suggest a natural line. null only if already native-sounding. ' +
+  'Echo: light fixes only; keep the target phrase. Never swap the practiced phrase for a synonym in corrections. ' +
   'On session start (__start__), echo and corrections must be null.';
 
 /** Word drill: short simple dialogue focused on one dictionary lemma. */
@@ -844,10 +845,10 @@ export async function generatePracticeWordTurn({
       { role: 'system', content: PRACTICE_WORD_SYSTEM_PROMPT },
       { role: 'user', content: userContent },
     ],
-    temperature: 0.45,
+    temperature: 0.48,
     top_p: 0.9,
-    max_tokens: 450,
-    repetition_penalty: 1.05,
+    max_tokens: 550,
+    repetition_penalty: 1.06,
   });
 
   const raw = extractJsonObject(content);

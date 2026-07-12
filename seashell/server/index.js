@@ -61,6 +61,7 @@ import { enqueueGigaChat, gigaChatQueueStats } from './gigachatQueue.js';
 import { isPayloadValidForContentLocale } from './localeValidation.js';
 import { isHeadwordValidForInput } from './dictionaryInputMode.js';
 import { registerTtsStatic, registerTtsSpeak } from './tts.js';
+import { registerSttTranscribe } from './stt.js';
 import {
   assertPracticeAccess,
   assertRefreshAccess,
@@ -542,6 +543,7 @@ app.post('/api/admin/reset-limits', async (req, res) => {
 });
 
 registerTtsSpeak(app, { makeRateLimiter });
+registerSttTranscribe(app, { makeRateLimiter });
 
 function normalizeWord(w) {
   return String(w || '')

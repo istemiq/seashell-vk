@@ -27,7 +27,13 @@ describe('practiceEcho', () => {
     assert.equal(sanitizeWordPracticeEcho(user, echo, 'as of tomorrow'), user);
   });
 
-  it('drops variant-style corrections when target phrase was used', () => {
+  it('allows naturalness corrections when target phrase was used', () => {
+    const user = 'Being drunk she moved in zigzags';
+    const corrections = 'Нужна запятая: "Being drunk, she moved in zigzags."';
+    assert.equal(sanitizeWordPracticeCorrections(user, corrections, 'in zigzags'), corrections);
+  });
+
+  it('still blocks synonym swap for the practiced phrase', () => {
     const user = "I'm free as of today";
     const corrections = "Maybe you meant: I'm free starting today?";
     assert.equal(sanitizeWordPracticeCorrections(user, corrections, 'as of tomorrow'), null);
