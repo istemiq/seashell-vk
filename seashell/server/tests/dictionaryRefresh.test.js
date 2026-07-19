@@ -38,7 +38,7 @@ describe('dictionary refresh helpers', () => {
 describe('dictionary cache key variants', () => {
   const base = {
     requestWord: 'run',
-    model: 'GigaChat',
+    model: 'deepseek-chat',
     promptVersion: 'v6',
     exampleCount: 10,
     contentLocale: 'ru',

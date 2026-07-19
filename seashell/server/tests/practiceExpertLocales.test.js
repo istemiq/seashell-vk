@@ -22,7 +22,7 @@ const SAMPLE_HISTORY = [
   'User: Usually people get mad',
 ].join('\n');
 
-/** Mirrors gigachat buildPracticeExpertPrompt substitution. */
+/** Mirrors llmClient buildPracticeExpertPrompt substitution. */
 function buildFullExpertPrompt(locale, expert, opts = {}) {
   const history = opts.history ?? SAMPLE_HISTORY;
   let prompt = loadPracticeExpertTurnPrompt(locale, expert);

@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "check-gigachat": "node scripts/check-gigachat-key.js",
     "import-sqlite": "node scripts/import-sqlite-to-postgres.js"
   },
   "engines": {

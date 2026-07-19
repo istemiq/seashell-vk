@@ -17,7 +17,7 @@ import {
   generatePracticeExpertTurn,
   generatePracticeTurn,
   generatePracticeWordTurn,
-} from './gigachat.js';
+} from './llmClient.js';
 import { isPracticeExpertId, PRACTICE_EXPERT_START_MARKER } from './practiceExperts.js';
 import { normalizeContentLocale } from './promptLocales.js';
 import { getWordWithExamples } from './db.js';

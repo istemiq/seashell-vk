@@ -1,5 +1,5 @@
 /**
- * HTTP API для мини-приложения: словарь (PostgreSQL), разговорная практика (GigaChat).
+ * HTTP API для мини-приложения: словарь (PostgreSQL), разговорная практика (LLM).
  * Публично: GET /api/health. Остальное — только с заголовком X-VK-User-Id (middleware ниже).
  * Запуск: из каталога seashell — npm run api или npm run dev.
  */
@@ -35,11 +35,11 @@ import {
 } from './db.js';
 import {
   generateWordExamples,
+  generateIrregularVerbExamples,
   resolveHeadwordEnQuick,
-  tlsInsecure,
   logDictionaryPromptStartupInfo,
   wordInputLooksEnglish,
-} from './gigachat.js';
+} from './llmClient.js';
 import { listPracticeExpertsForUi, isPracticeExpertId, PRACTICE_EXPERT_START_MARKER } from './practiceExperts.js';
 import {
   getPracticeSessionBundle,
@@ -57,7 +57,7 @@ import {
 } from './limitsPolicy.js';
 import { normalizeContentLocale } from './promptLocales.js';
 import { llmProviderLabel, resolveLlmModel, resolveLlmProvider } from './llmProvider.js';
-import { enqueueGigaChat, gigaChatQueueStats } from './gigachatQueue.js';
+import { enqueueLlm, llmQueueStats } from './llmQueue.js';
 import { isPayloadValidForContentLocale } from './localeValidation.js';
 import { isHeadwordValidForInput } from './dictionaryInputMode.js';
 import { registerTtsStatic, registerTtsSpeak } from './tts.js';
@@ -132,6 +132,12 @@ import { fetchUsageStats } from './usageStats.js';
 import { getDbPool } from './db.js';
 import { clientIp } from './securityHelpers.js';
 import { generationUserMessage } from './userGenerationErrors.js';
+import {
+  appendIrregularVerbExampleBatch,
+  getMixedIrregularVerbExamples,
+  irregularVerbBatchCount,
+} from './irregularVerbsDb.js';
+import { getIrregularVerbById } from './irregularVerbsManifest.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -230,7 +236,7 @@ function makeRateLimiter({ windowMs, max, keyFn }) {
 }
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, wordExampleLimit: WORD_EXAMPLE_COUNT, gigaChatQueue: gigaChatQueueStats() });
+  res.json({ ok: true, wordExampleLimit: WORD_EXAMPLE_COUNT, llmQueue: llmQueueStats() });
 });
 
 const limitAdminStats = makeRateLimiter({
@@ -564,7 +570,7 @@ function sendGenerationError(res, req, e, statusOverride) {
     status < 500 &&
     e?.message &&
     !String(e.message).includes('OpenRouter') &&
-    !String(e.message).includes('GigaChat')
+    !String(e.message).includes('DeepSeek')
   ) {
     return res.status(status).json({ error: String(e.message) });
   }
@@ -607,7 +613,7 @@ async function generateDictionaryPayload(word, contentLocale) {
     return { payload: cached, source: 'cache' };
   }
 
-  return enqueueGigaChat(async () => {
+  return enqueueLlm(async () => {
     const cachedAfterWait = await getCachedWordGeneration(word, meta);
     if (dictionaryCacheHit(word, contentLocale, cachedAfterWait)) {
       return { payload: cachedAfterWait, source: 'cache' };
@@ -622,13 +628,13 @@ async function generateDictionaryPayload(word, contentLocale) {
     ) {
       await saveCachedWordGeneration(generated.headwordEn, generated, meta);
     }
-    return { payload: generated, source: 'gigachat' };
+    return { payload: generated, source: resolveLlmProvider() };
   }, {
     label: `dictionary:${word}:${meta.contentLocale}`,
   });
 }
 
-// --- Разговорная практика (один ход диалога через GigaChat) ---
+// --- Разговорная практика (один ход диалога через LLM) ---
 const limitPractice = makeRateLimiter({
   windowMs: 60_000,
   max: 10,
@@ -666,7 +672,7 @@ app.post('/api/practice/turn', limitPractice, async (req, res) => {
   const contentLocale = resolveContentLocale(req);
   const clientHistory = Array.isArray(req.body?.history) ? req.body.history : null;
   try {
-    const out = await enqueueGigaChat(
+    const out = await enqueueLlm(
       () =>
         runFreePracticeTurn({
           vkUserId: req.vkUserId,
@@ -761,7 +767,7 @@ app.post('/api/practice/expert/turn', limitPractice, async (req, res) => {
       ? parseInt(String(sessionIdRaw), 10)
       : null;
   try {
-    const out = await enqueueGigaChat(
+    const out = await enqueueLlm(
       () =>
         runExpertPracticeTurn({
           vkUserId: req.vkUserId,
@@ -828,7 +834,7 @@ app.post('/api/practice/word/turn', limitPractice, async (req, res) => {
       : null;
 
   try {
-    const out = await enqueueGigaChat(
+    const out = await enqueueLlm(
       () =>
         runWordPracticeTurn({
           vkUserId: req.vkUserId,
@@ -989,7 +995,7 @@ async function handleRefreshExamples(req, res) {
     if (!pol.ok) return res.status(400).json({ error: pol.error });
     const contentLocale = resolveContentLocale(req);
     const previousTexts = (row.examples || []).map((ex) => ex.text).filter(Boolean);
-    const generated = await enqueueGigaChat(
+    const generated = await enqueueLlm(
       () => generateWordExamples(row.word, { contentLocale, avoidExamples: previousTexts }),
       {
       label: `dictionary-refresh:${row.word}`,
@@ -1015,6 +1021,98 @@ async function handleRefreshExamples(req, res) {
 /** Два URL: короткий — для совместимости; длинный — как в REST. */
 app.post('/api/refresh-examples', limitGeneration, handleRefreshExamples);
 app.post('/api/words/:id/refresh-examples', limitGeneration, handleRefreshExamples);
+
+async function irregularVerbExamplesPayload(verbId, contentLocale) {
+  const mixed = await getMixedIrregularVerbExamples(verbId, contentLocale);
+  const batchCount = await irregularVerbBatchCount(verbId, contentLocale);
+  return {
+    ...mixed,
+    batchCount,
+    verbId: parseInt(String(verbId), 10),
+    contentLocale: normalizeContentLocale(contentLocale),
+  };
+}
+
+app.get('/api/irregular-verbs/:id/examples', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid verb id' });
+  }
+  const verb = getIrregularVerbById(id);
+  if (!verb) return res.status(404).json({ error: 'Not found' });
+  const contentLocale = resolveContentLocale(req);
+  try {
+    res.json(await irregularVerbExamplesPayload(id, contentLocale));
+  } catch (e) {
+    console.error(e);
+    respondDatabaseError(res, e);
+  }
+});
+
+app.post('/api/irregular-verbs/:id/examples/generate', limitGeneration, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid verb id' });
+  }
+  const verb = getIrregularVerbById(id);
+  if (!verb) return res.status(404).json({ error: 'Not found' });
+  const contentLocale = resolveContentLocale(req);
+  try {
+    const mixed = await getMixedIrregularVerbExamples(id, contentLocale);
+    if (!mixed.needsGeneration) {
+      return res.json({ ...(await irregularVerbExamplesPayload(id, contentLocale)), source: 'cache' });
+    }
+
+    let accessMode;
+    try {
+      const quota = await getWordsQuotaStatus(req.vkUserId);
+      accessMode = await assertWordsAccess(req, res, quota);
+      if (!accessMode) return;
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: 'Failed to check limits' });
+    }
+
+    const generated = await enqueueLlm(
+      () => generateIrregularVerbExamples(verb, { contentLocale }),
+      { label: `irregular-verb:${id}:${normalizeContentLocale(contentLocale)}` },
+    );
+    await appendIrregularVerbExampleBatch(id, contentLocale, generated.examples);
+    if (accessMode === 'credits') {
+      await chargeWordCredit(req.vkUserId);
+    }
+    res.json({ ...(await irregularVerbExamplesPayload(id, contentLocale)), source: resolveLlmProvider() });
+  } catch (e) {
+    console.error(e);
+    sendGenerationError(res, req, e);
+  }
+});
+
+app.post('/api/irregular-verbs/:id/examples/refresh', limitGeneration, async (req, res) => {
+  const accessMode = await assertRefreshAccess(req, res);
+  if (!accessMode) return;
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid verb id' });
+  }
+  const verb = getIrregularVerbById(id);
+  if (!verb) return res.status(404).json({ error: 'Not found' });
+  const contentLocale = resolveContentLocale(req);
+  try {
+    const generated = await enqueueLlm(
+      () => generateIrregularVerbExamples(verb, { contentLocale }),
+      { label: `irregular-verb-refresh:${id}:${normalizeContentLocale(contentLocale)}` },
+    );
+    await appendIrregularVerbExampleBatch(id, contentLocale, generated.examples);
+    if (accessMode === 'credits') {
+      await chargeRefreshCredit(req.vkUserId);
+    }
+    res.json({ ...(await irregularVerbExamplesPayload(id, contentLocale)), source: resolveLlmProvider() });
+  } catch (e) {
+    console.error(e);
+    sendGenerationError(res, req, e);
+  }
+});
 
 app.post('/api/words', limitGeneration, async (req, res) => {
   let accessMode;
@@ -1043,7 +1141,7 @@ app.post('/api/words', limitGeneration, async (req, res) => {
 
     if (!wordInputLooksEnglish(word, contentLocale)) {
       const previewLemma = normalizeWord(
-        await enqueueGigaChat(() => resolveHeadwordEnQuick(word, contentLocale), {
+        await enqueueLlm(() => resolveHeadwordEnQuick(word, contentLocale), {
           label: `headword-preview:${word}`,
         }),
       );
@@ -1121,16 +1219,10 @@ async function start() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    const tls = process.env.GIGACHAT_TLS_INSECURE?.trim();
     const provider = resolveLlmProvider();
     const model = resolveLlmModel();
     console.log(`API: http://0.0.0.0:${PORT} (PORT=${process.env.PORT ?? 'default 3001'})`);
     console.log(`LLM: provider=${provider} (${llmProviderLabel()}) model=${model}`);
-    if (provider === 'gigachat') {
-      console.log(
-        `GigaChat TLS relaxed (undici): ${tlsInsecure() ? 'yes' : 'no'} | NODE_ENV=${process.env.NODE_ENV ?? '(не задан)'} | GIGACHAT_TLS_INSECURE=${tls ?? '(unset)'}`,
-      );
-    }
   });
 }
 

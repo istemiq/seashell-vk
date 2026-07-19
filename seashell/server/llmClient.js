@@ -1,12 +1,9 @@
 /**
- * Клиент GigaChat OAuth + chat/completions.
- * Промпты лежат в `server/prompts/`. Ответы парсятся в JSON (примеры словаря, ход диалога практики).
- * Исходящие HTTPS-запросы идут через `undici` с опциональным ослаблением TLS (см. tlsInsecure).
+ * LLM-клиент: словарь, практика, неправильные глаголы (OpenRouter / DeepSeek).
+ * Промпты в `server/prompts/`. Ответы парсятся в JSON.
  */
 import path from 'path';
-import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
-import { Agent, fetch as undiciFetch } from 'undici';
 import {
   englishLineFromItem,
   lineFromField,
@@ -15,7 +12,7 @@ import {
   splitTranslationTail,
   normalizeVerbUsage,
 } from './exampleFields.js';
-import { WORD_EXAMPLE_COUNT } from './dictionaryConstants.js';
+import { WORD_EXAMPLE_COUNT, IRREGULAR_VERB_EXAMPLES_PER_FORM } from './dictionaryConstants.js';
 import {
   examplesOverlapRatio,
   refreshAvoidExamplesNote,
@@ -40,6 +37,7 @@ import {
   loadPracticeTurnPrompt,
   loadPracticeWordTurnPrompt,
   loadWordExamplesUserPrompt,
+  loadIrregularVerbExamplesSingleFormPrompt,
   listPromptLocaleStatus,
 } from './promptLoader.js';
 import {
@@ -53,109 +51,6 @@ import { openRouterChatCompletion } from './openrouter.js';
 import { deepSeekChatCompletion } from './deepseek.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-const OAUTH_URL = 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth';
-const CHAT_URL = 'https://gigachat.devices.sberbank.ru/api/v1/chat/completions';
-
-/** Встроенный `fetch` в Node 24 может игнорировать `dispatcher` — весь GigaChat идёт через undici. */
-let insecureDispatcher = null;
-
-/**
- * Ослабить проверку TLS для исходящих запросов к GigaChat.
- * Явно: GIGACHAT_TLS_INSECURE=1 / =0 в server/.env.
- * По умолчанию: если NODE_ENV !== 'production' (типичный npm run dev) — включаем (антивирус Windows часто даёт self-signed chain).
- * На проде с NODE_ENV=production — строго, пока не задашь =1.
- */
-export function tlsInsecure() {
-  const v = process.env.GIGACHAT_TLS_INSECURE?.trim();
-  if (v === '0' || v?.toLowerCase() === 'false') return false;
-  if (v === '1' || v?.toLowerCase() === 'true') return true;
-  return process.env.NODE_ENV !== 'production';
-}
-function gigaFetch(url, init = {}) {
-  const timeouts = {
-    headersTimeout: 20_000,
-    bodyTimeout: 25_000,
-  };
-  if (tlsInsecure()) {
-    if (!insecureDispatcher) {
-      insecureDispatcher = new Agent({ connect: { rejectUnauthorized: false } });
-    }
-    return undiciFetch(url, { ...timeouts, ...init, dispatcher: insecureDispatcher });
-  }
-  return undiciFetch(url, { ...timeouts, ...init });
-}
-
-let cached = { token: null, expiresAt: 0 };
-
-/** Node даёт сухое «fetch failed» — подменяем на подсказку для .env и TLS. */
-function mapNetErr(err, phase) {
-  const raw = String(err?.cause?.message || err?.message || err);
-  const low = raw.toLowerCase();
-  const looksNet =
-    low.includes('fetch failed') ||
-    low.includes('econn') ||
-    low.includes('enotfound') ||
-    low.includes('etimedout') ||
-    low.includes('certificate') ||
-    low.includes('tls') ||
-    low.includes('ssl') ||
-    low.includes('self-signed');
-  if (!looksNet) return err instanceof Error ? err : new Error(raw);
-  return new Error(
-    `GigaChat (${phase}): сеть/HTTPS. Проверь интернет и VPN. Локально при NODE_ENV=production задай в server/.env GIGACHAT_TLS_INSECURE=1. Технически: ${raw}`
-  );
-}
-
-async function getAccessToken() {
-  const now = Date.now();
-  if (cached.token && cached.expiresAt > now + 60_000) {
-    return cached.token;
-  }
-
-  // В .env легко случайно оставить перенос/пробел, кавычки или даже префикс "Basic ".
-  // GigaChat OAuth очень чувствителен к таким артефактам и отвечает "Can't decode Authorization header".
-  const key = String(process.env.GIGACHAT_API_KEY || '')
-    .trim()
-    .replace(/^["']|["']$/g, '')
-    .replace(/^basic\s+/i, '')
-    .replace(/\s+/g, '');
-  if (!key) {
-    throw new Error('GIGACHAT_API_KEY is not set');
-  }
-
-  const rqUid = randomUUID();
-  const body = new URLSearchParams({ scope: 'GIGACHAT_API_PERS' });
-
-  let res;
-  try {
-    res = await gigaFetch(OAUTH_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
-        RqUID: rqUid,
-        Authorization: `Basic ${key}`,
-      },
-      body: body.toString(),
-    });
-  } catch (e) {
-    throw mapNetErr(e, 'OAuth');
-  }
-
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(`GigaChat OAuth: ${res.status} ${JSON.stringify(data)}`);
-  }
-
-  const accessToken = data.access_token;
-  const expiresIn = Number(data.expires_in) || 1700;
-  cached = {
-    token: accessToken,
-    expiresAt: now + expiresIn * 1000,
-  };
-  return accessToken;
-}
 
 /**
  * Словарный промпт читается с диска на каждый запрос (без in-memory кэша),
@@ -171,7 +66,7 @@ function getWordDictionaryUserPromptParts(contentLocale) {
   };
 }
 
-/** System-роль GigaChat для словаря. */
+/** System-роль LLM для словаря. */
 function buildDictionarySystemContent(contentLocale) {
   const locale = normalizeContentLocale(contentLocale);
   return String(loadDictionarySystemPrompt(locale))
@@ -406,42 +301,6 @@ function sanitizeGlossRu(glossRuRaw) {
   return g;
 }
 
-async function gigaChatRawCompletion({ model, messages, temperature, max_tokens, top_p, repetition_penalty }) {
-  const token = await getAccessToken();
-  let res;
-  try {
-    res = await gigaFetch(CHAT_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature,
-        max_tokens,
-        ...(top_p != null ? { top_p } : {}),
-        ...(repetition_penalty != null ? { repetition_penalty } : {}),
-      }),
-    });
-  } catch (e) {
-    throw mapNetErr(e, 'chat');
-  }
-
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(`GigaChat chat: ${res.status} ${JSON.stringify(data)}`);
-  }
-
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content || typeof content !== 'string') {
-    throw new Error('Empty GigaChat response');
-  }
-  return content;
-}
-
 export async function llmChatCompletion({ messages, temperature, max_tokens, top_p, repetition_penalty }) {
   const model = resolveLlmModel();
   const provider = resolveLlmProvider();
@@ -451,12 +310,10 @@ export async function llmChatCompletion({ messages, temperature, max_tokens, top
   if (provider === 'deepseek') {
     return deepSeekChatCompletion({ model, messages, temperature, max_tokens, top_p, repetition_penalty });
   }
-  return gigaChatRawCompletion({ model, messages, temperature, max_tokens, top_p, repetition_penalty });
+  throw new Error(`Unsupported LLM_PROVIDER: ${provider}. Use openrouter or deepseek.`);
 }
 
-async function gigaChatWordExamplesCompletion(userContent, model, token, temperature, contentLocale) {
-  void model;
-  void token;
+async function dictionaryLlmCompletion(userContent, temperature, contentLocale) {
   return llmChatCompletion({
     messages: [
       { role: 'system', content: buildDictionarySystemContent(contentLocale) },
@@ -469,7 +326,7 @@ async function gigaChatWordExamplesCompletion(userContent, model, token, tempera
 
 /** Температура для генерации словаря: из .env или 0.38. */
 function wordExamplesTemperature() {
-  const raw = process.env.GIGACHAT_WORD_TEMPERATURE?.trim();
+  const raw = process.env.LLM_WORD_TEMPERATURE?.trim();
   if (!raw) return 0.38;
   const n = Number(raw.replace(',', '.'));
   if (!Number.isFinite(n)) return 0.38;
@@ -478,8 +335,6 @@ function wordExamplesTemperature() {
 
 export async function generateWordExamples(word, { contentLocale, avoidExamples = [] } = {}) {
   const locale = normalizeContentLocale(contentLocale);
-  const model = resolveLlmModel();
-  const token = resolveLlmProvider() === 'gigachat' ? await getAccessToken() : null;
   const avoidList = Array.isArray(avoidExamples)
     ? avoidExamples.map((t) => String(t ?? '').trim()).filter(Boolean)
     : [];
@@ -499,13 +354,7 @@ export async function generateWordExamples(word, { contentLocale, avoidExamples 
       : attempt > 0
         ? Math.min(0.55, wordExamplesTemperature() + 0.08)
         : baseTemperature;
-    const content = await gigaChatWordExamplesCompletion(
-      userContent + retryNote,
-      model,
-      token,
-      attemptTemperature,
-      locale,
-    );
+    const content = await dictionaryLlmCompletion(userContent + retryNote, attemptTemperature, locale);
 
     let payload;
     try {
@@ -555,7 +404,7 @@ export async function generateWordExamples(word, { contentLocale, avoidExamples 
             `Refresh examples too similar to previous set (${Math.round(overlap * 100)}% overlap)`,
           );
           console.warn(
-            `[gigachat] dictionary refresh overlap ${locale}, attempt ${attempt + 1}/4`,
+            `[llm] dictionary refresh overlap ${locale}, attempt ${attempt + 1}/4`,
             lastErr.message,
           );
           continue;
@@ -564,11 +413,123 @@ export async function generateWordExamples(word, { contentLocale, avoidExamples 
       return result;
     } catch (e) {
       lastErr = e;
-      console.warn(`[gigachat] dictionary validation ${locale}, attempt ${attempt + 1}/4`, e?.message);
+      console.warn(`[llm] dictionary validation ${locale}, attempt ${attempt + 1}/4`, e?.message);
     }
   }
 
   throw lastErr instanceof Error ? lastErr : new Error('Wrong translation language from model');
+}
+
+const IRREGULAR_FORM_KEYS = ['present', 'past_simple', 'past_participle'];
+
+function normalizeIrregularExampleItem(item) {
+  if (!item || typeof item !== 'object') return null;
+  const form = String(item.form ?? '').trim();
+  if (!IRREGULAR_FORM_KEYS.includes(form)) return null;
+  let en = englishLineFromItem(item);
+  let translation = russianLineFromItem(item);
+  const sp = splitTranslationTail(translation);
+  if (sp.noteRu) translation = sp.translation;
+  if (!en) return null;
+  return { form, en: en.trim(), translation: String(translation ?? '').trim() };
+}
+
+function extractIrregularExamplesPayload(text) {
+  const t = text.trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(t);
+  } catch {
+    const start = t.indexOf('{');
+    const end = t.lastIndexOf('}');
+    if (start === -1 || end <= start) throw new Error('No JSON object in model response');
+    parsed = JSON.parse(t.slice(start, end + 1));
+  }
+  const arr = Array.isArray(parsed?.examples) ? parsed.examples : Array.isArray(parsed) ? parsed : [];
+  return arr.map((item) => normalizeIrregularExampleItem(item)).filter(Boolean);
+}
+
+/** {{IRREGULAR_VERB_EXAMPLES_PER_FORM}} примеров одной формы неправильного глагола. */
+async function generateIrregularVerbExamplesForForm(verb, formKey, { contentLocale } = {}) {
+  const locale = normalizeContentLocale(contentLocale);
+  const infinitive = String(verb?.infinitive ?? '').trim();
+  const pastSimple = String(verb?.past_simple ?? '').trim();
+  const pastParticiple = String(verb?.past_participle ?? '').trim();
+  if (!infinitive || !pastSimple || !pastParticiple) {
+    throw new Error('Invalid verb forms');
+  }
+  if (!IRREGULAR_FORM_KEYS.includes(formKey)) {
+    throw new Error(`Invalid verb form: ${formKey}`);
+  }
+
+  const userContent = loadIrregularVerbExamplesSingleFormPrompt(locale, {
+    INFINITIVE: infinitive,
+    PAST_SIMPLE: pastSimple,
+    PAST_PARTICIPLE: pastParticiple,
+    FORM_KEY: formKey,
+    EXAMPLES_PER_FORM: String(IRREGULAR_VERB_EXAMPLES_PER_FORM),
+  });
+
+  let lastErr;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const retryNote = attempt > 0 ? localeDictionaryRetryNote(locale) : '';
+    const content = await llmChatCompletion({
+      messages: [
+        { role: 'system', content: buildDictionarySystemContent(locale) },
+        { role: 'user', content: userContent + retryNote },
+      ],
+      temperature:
+        attempt > 0 ? Math.min(0.55, wordExamplesTemperature() + 0.08) : wordExamplesTemperature(),
+      max_tokens: 4000,
+    });
+
+    let examples;
+    try {
+      examples = extractIrregularExamplesPayload(content).filter((ex) => ex.form === formKey);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(`Ответ модели не разобрался как JSON (${msg}).`);
+    }
+
+    if (examples.length < IRREGULAR_VERB_EXAMPLES_PER_FORM) {
+      lastErr = new Error(
+        `Expected ${IRREGULAR_VERB_EXAMPLES_PER_FORM} examples for ${formKey}, got ${examples.length}`,
+      );
+      continue;
+    }
+
+    const trimmed = examples.slice(0, IRREGULAR_VERB_EXAMPLES_PER_FORM);
+    const payload = { examples: trimmed };
+    try {
+      assertPayloadMatchesContentLocale(locale, payload);
+      return trimmed;
+    } catch (e) {
+      lastErr = e;
+      console.warn(
+        `[llm] irregular verb ${formKey} locale mismatch ${locale}, attempt ${attempt + 1}/4`,
+        e?.message,
+      );
+    }
+  }
+
+  throw lastErr instanceof Error ? lastErr : new Error('Wrong translation language from model');
+}
+
+/** 30 примеров (10 × present / past_simple / past_participle) — три параллельных запроса к LLM. */
+export async function generateIrregularVerbExamples(verb, { contentLocale } = {}) {
+  const infinitive = String(verb?.infinitive ?? '').trim();
+  if (!infinitive) throw new Error('Invalid verb forms');
+
+  const startedAt = Date.now();
+  const chunks = await Promise.all(
+    IRREGULAR_FORM_KEYS.map((formKey) =>
+      generateIrregularVerbExamplesForForm(verb, formKey, { contentLocale }),
+    ),
+  );
+  console.log(
+    `[llm] irregular verb ${infinitive}: parallel forms done in ${Date.now() - startedAt}ms`,
+  );
+  return { examples: chunks.flat() };
 }
 
 /** Быстро получить английский headword до полной генерации (проверка дубликатов). */

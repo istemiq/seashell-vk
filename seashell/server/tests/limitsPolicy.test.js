@@ -17,6 +17,6 @@ test('wordsBatchLimit is fixed per ad window', () => {
 
 test('practiceBatchLimit is fixed per ad window', () => {
   assert.equal(practiceBatchLimit(), FREE_PRACTICE_BATCH);
-  assert.equal(FREE_PRACTICE_BATCH, 2);
-  assert.equal(FREE_PRACTICE_PER_AD, 2);
+  assert.equal(FREE_PRACTICE_BATCH, 3);
+  assert.equal(FREE_PRACTICE_PER_AD, 3);
 });

@@ -73,7 +73,7 @@ async function request(path, init = {}) {
 const RESTART_API_HINT =
   'Перезапусти API: в терминале останови npm run dev (Ctrl+C) и снова запусти из папки seashell — иначе на порту 3001 может висеть старый процесс Node без новых маршрутов.';
 
-/** 502 от Vite = прокси не достучался; 502 от Express = часто { error } от GigaChat. */
+/** 502 от Vite = прокси не достучался; 502 от Express = часто { error } от LLM. */
 function messageFromStatusAndBody(status, text) {
   const raw = String(text ?? '');
   const trimmed = raw.trim();
@@ -211,7 +211,7 @@ export async function removeWord(wordId) {
   }
 }
 
-/** Заново запросить у GigaChat 15 примеров с переводами и заменить сохранённые. */
+/** Заново запросить у LLM примеры с переводами и заменить сохранённые. */
 export async function refreshWordExamples(wordId) {
   const r = await request('/refresh-examples', {
     method: 'POST',

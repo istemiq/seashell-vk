@@ -1,0 +1,34 @@
+{
+  "examples": [
+    {
+      "form": "present",
+      "en": "I go to work by bus every day.",
+      "translation": "Voy al trabajo en autobús cada día. — neutro; BrE/AmE"
+    },
+    {
+      "form": "present",
+      "en": "She goes to the gym twice a week.",
+      "translation": "Va al gimnasio dos veces por semana. — neutro; BrE/AmE"
+    },
+    {
+      "form": "past_simple",
+      "en": "We went to the coast last summer.",
+      "translation": "Fuimos a la costa el verano pasado. — neutro; BrE/AmE"
+    },
+    {
+      "form": "past_simple",
+      "en": "He went home early yesterday.",
+      "translation": "Ayer se fue a casa temprano. — neutro; BrE/AmE"
+    },
+    {
+      "form": "past_participle",
+      "en": "She has gone abroad for a month.",
+      "translation": "Se ha ido al extranjero un mes. — neutro; BrE/AmE"
+    },
+    {
+      "form": "past_participle",
+      "en": "The milk has gone bad.",
+      "translation": "La leche se ha echado a perder. — coloq.; BrE/AmE"
+    }
+  ]
+}

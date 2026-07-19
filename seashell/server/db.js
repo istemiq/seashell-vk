@@ -130,6 +130,18 @@ export async function initDb() {
 
   const { initBillingDb } = await import('./billingDb.js');
   await initBillingDb();
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS irregular_verb_example_batches (
+    id SERIAL PRIMARY KEY,
+    verb_id INTEGER NOT NULL,
+    content_locale TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    created_at BIGINT NOT NULL
+  )`);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_irregular_verb_batches_lookup
+     ON irregular_verb_example_batches (verb_id, content_locale, created_at DESC)`,
+  );
 }
 
 function parseVerbUsageColumn(raw) {
@@ -165,7 +177,7 @@ export function dictionaryCacheKey({
 }) {
   const parts = [
     normalizeCacheWord(requestWord),
-    String(model || 'GigaChat').trim(),
+    String(model || resolveLlmModel()).trim(),
     String(promptVersion || 'v1').trim(),
     String(exampleCount),
     String(contentLocale || 'ru').trim().toLowerCase(),
@@ -206,7 +218,7 @@ function payloadFromWordRow(word, examples) {
 export function dictionaryGenerationCacheMeta(contentLocale) {
   return {
     model: resolveLlmModel(),
-    promptVersion: String(process.env.GIGACHAT_DICTIONARY_CACHE_VERSION || 'v6').trim() || 'v6',
+    promptVersion: String(process.env.LLM_DICTIONARY_CACHE_VERSION || 'v6').trim() || 'v6',
     exampleCount: WORD_EXAMPLE_COUNT,
     contentLocale: normalizeContentLocale(contentLocale),
   };
@@ -282,7 +294,7 @@ export async function findReusableWordGeneration(wordNorm) {
   return payloadFromWordRow(word, examples);
 }
 
-/** Разбор ответа GigaChat: либо массив примеров, либо объект { glossRu, examples }. */
+/** Разбор ответа LLM: либо массив примеров, либо объект { glossRu, examples }. */
 function unpackWordPayload(payload) {
   if (Array.isArray(payload)) {
     return { glossRu: null, glossNoteRu: null, examples: payload, verbUsage: [] };

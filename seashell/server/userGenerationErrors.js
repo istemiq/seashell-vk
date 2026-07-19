@@ -41,8 +41,7 @@ export function classifyGenerationError(e) {
     text.includes('security policy') ||
     text.includes('openrouter') ||
     text.includes('deepseek') ||
-    text.includes('gigachat') ||
-    text.includes('empty gigachat') ||
+    text.includes('empty deepseek') ||
     text.includes('empty openrouter')
   ) {
     return 'llm_unavailable';

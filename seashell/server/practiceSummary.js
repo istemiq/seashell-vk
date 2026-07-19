@@ -1,4 +1,4 @@
-import { llmChatCompletion } from './gigachat.js';
+import { llmChatCompletion } from './llmClient.js';
 import { formatMessagesForSummary } from './practiceContext.js';
 import { PRACTICE_MAX_SUMMARY_CHARS } from './practiceConstants.js';
 

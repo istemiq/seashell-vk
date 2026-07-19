@@ -1,5 +1,5 @@
 /**
- * Панель «Словарь»: список слов, добавление с генерацией примеров через GigaChat, карусель примеров с переводом.
+ * Панель «Словарь»: список слов, добавление с генерацией примеров через LLM, карусель примеров с переводом.
  * См. `dictionaryApi.js` и `server/db.js` (PostgreSQL).
  */
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';

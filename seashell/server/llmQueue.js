@@ -1,7 +1,7 @@
-class GigaChatQueueFullError extends Error {
+class LlmQueueFullError extends Error {
   constructor(message) {
     super(message);
-    this.name = 'GigaChatQueueFullError';
+    this.name = 'LlmQueueFullError';
     this.statusCode = 429;
   }
 }
@@ -18,15 +18,15 @@ function intEnv(name, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {})
 }
 
 function maxConcurrent() {
-  return intEnv('GIGACHAT_QUEUE_CONCURRENCY', 1, { min: 1, max: 10 });
+  return intEnv('LLM_QUEUE_CONCURRENCY', 1, { min: 1, max: 10 });
 }
 
 function minIntervalMs() {
-  return intEnv('GIGACHAT_QUEUE_MIN_INTERVAL_MS', 1500, { min: 0, max: 60_000 });
+  return intEnv('LLM_QUEUE_MIN_INTERVAL_MS', 1500, { min: 0, max: 60_000 });
 }
 
 function maxQueueSize() {
-  return intEnv('GIGACHAT_QUEUE_MAX_SIZE', 50, { min: 1, max: 500 });
+  return intEnv('LLM_QUEUE_MAX_SIZE', 50, { min: 1, max: 500 });
 }
 
 function schedulePump(delay = 0) {
@@ -61,11 +61,9 @@ function pump() {
     });
 }
 
-export function enqueueGigaChat(task, { label = 'gigachat' } = {}) {
+export function enqueueLlm(task, { label = 'llm' } = {}) {
   if (queue.length >= maxQueueSize()) {
-    throw new GigaChatQueueFullError(
-      `GigaChat queue is full (${label}). Please try again later.`,
-    );
+    throw new LlmQueueFullError(`LLM queue is full (${label}). Please try again later.`);
   }
 
   return new Promise((resolve, reject) => {
@@ -74,7 +72,7 @@ export function enqueueGigaChat(task, { label = 'gigachat' } = {}) {
   });
 }
 
-export function gigaChatQueueStats() {
+export function llmQueueStats() {
   return {
     active,
     queued: queue.length,

@@ -1,0 +1,34 @@
+{
+  "examples": [
+    {
+      "form": "present",
+      "en": "I go to work by bus every day.",
+      "translation": "Каждый день я езжу на работу на автобусе. — нейтр.; BrE/AmE"
+    },
+    {
+      "form": "present",
+      "en": "She goes to the gym twice a week.",
+      "translation": "Она ходит в спортзал два раза в неделю. — нейтр.; BrE/AmE"
+    },
+    {
+      "form": "past_simple",
+      "en": "We went to the coast last summer.",
+      "translation": "Прошлым летом мы ездили на побережье. — нейтр.; BrE/AmE"
+    },
+    {
+      "form": "past_simple",
+      "en": "He went home early yesterday.",
+      "translation": "Вчера он рано ушёл домой. — нейтр.; BrE/AmE"
+    },
+    {
+      "form": "past_participle",
+      "en": "She has gone abroad for a month.",
+      "translation": "Она уехала за границу на месяц. — нейтр.; BrE/AmE"
+    },
+    {
+      "form": "past_participle",
+      "en": "The milk has gone bad.",
+      "translation": "Молоко испортилось. — разг.; BrE/AmE"
+    }
+  ]
+}

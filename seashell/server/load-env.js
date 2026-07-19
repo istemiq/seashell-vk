@@ -55,15 +55,9 @@ function ensureEnvKey(key) {
   }
 }
 
-ensureEnvKey('GIGACHAT_TLS_INSECURE');
 ensureEnvKey('TELEGRAM_BOT_TOKEN');
 
-const tls = process.env.GIGACHAT_TLS_INSECURE?.trim();
 const nodeEnv = process.env.NODE_ENV ?? '(не задан)';
 console.log(
-  `[load-env] server/.env ${fs.existsSync(envInServer) ? 'ok' : 'нет'} | seashell/.env ${fs.existsSync(envInSeashellRoot) ? 'ok' : 'нет'} | GIGACHAT_TLS_INSECURE=${tls ?? '(unset)'} | NODE_ENV=${nodeEnv}`
+  `[load-env] server/.env ${fs.existsSync(envInServer) ? 'ok' : 'нет'} | seashell/.env ${fs.existsSync(envInSeashellRoot) ? 'ok' : 'нет'} | NODE_ENV=${nodeEnv}`
 );
-
-if (tls === '1' || tls?.toLowerCase() === 'true') {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-}

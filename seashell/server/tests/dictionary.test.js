@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { localizeStylisticNote } from '../stylisticNotes.js';
 import {
   englishLineFromItem,
   lineFromField,
@@ -38,10 +39,19 @@ describe('dictionary exampleFields', () => {
       translation: 'книга',
       noteRu: 'разг.',
     });
+    assert.deepEqual(splitTranslationTail('Necesito agua. — neutro; BrE/AmE'), {
+      translation: 'Necesito agua.',
+      noteRu: 'neutro; BrE/AmE',
+    });
     assert.deepEqual(splitTranslationTail('книга'), {
       translation: 'книга',
       noteRu: '',
     });
+  });
+
+  it('localizeStylisticNote maps Russian register tags to card locale', () => {
+    assert.equal(localizeStylisticNote('нейтр.; BrE/AmE', 'es'), 'neutro; BrE/AmE');
+    assert.equal(localizeStylisticNote('нейтр.; BrE/AmE', 'ru'), 'нейтр.; BrE/AmE');
   });
 
   it('normalizeVerbUsage keeps exactly three verb forms', () => {

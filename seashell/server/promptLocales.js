@@ -1,4 +1,4 @@
-/** UI locales that have dedicated GigaChat prompt packs (mirror of frontend UI_LOCALES). */
+/** UI locales that have dedicated LLM prompt packs (mirror of frontend UI_LOCALES). */
 export const CONTENT_LOCALE_CODES = new Set([
   'ru',
   'en',

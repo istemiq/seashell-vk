@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getPromptLocaleVars, normalizeContentLocale } from './promptLocales.js';
+import { englishLineFromItem, russianLineFromItem } from './exampleFields.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROMPTS_DIR = path.join(__dirname, 'prompts');
@@ -102,6 +103,96 @@ export function loadPracticeWordTurnPrompt(locale, { targetWord, wordGloss, word
     START_MARKER: '__start__',
   };
   return fillTemplate(readTemplate('practice-word-turn.template.txt'), vars);
+}
+
+/** Irregular verb examples user prompt (30 examples: 10 × 3 forms). */
+export function loadIrregularVerbExamplesPrompt(locale, extraVars = {}) {
+  let formatSample;
+  try {
+    formatSample = readLocaleFile(locale, 'irregular-verb-examples-format-sample.json');
+  } catch {
+    formatSample = readLocaleFile('ru', 'irregular-verb-examples-format-sample.json');
+  }
+  return fillTemplate(readTemplate('irregular-verb-examples.template.txt'), {
+    ...templateVarsFromLocale(locale),
+    FORMAT_SAMPLE: formatSample.trim(),
+    ...extraVars,
+  });
+}
+
+const IRREGULAR_FORM_LABEL_KEYS = {
+  present: 'VERB_LABEL_PRESENT',
+  past_simple: 'VERB_LABEL_PAST',
+  past_participle: 'VERB_LABEL_PARTICIPLE',
+};
+
+const IRREGULAR_FORM_TO_USAGE_INDEX = {
+  present: 0,
+  past_simple: 1,
+  past_participle: 2,
+};
+
+function irregularVerbSampleFromVerbPack(locale, formKey) {
+  try {
+    const parsed = JSON.parse(readLocaleFile(locale, 'word-dictionary-format-sample-verb.json'));
+    const examples = [];
+    const usage = parsed.verbUsage?.[IRREGULAR_FORM_TO_USAGE_INDEX[formKey]];
+    if (usage) {
+      const en = englishLineFromItem(usage);
+      const translation = russianLineFromItem(usage);
+      if (en && translation) {
+        examples.push({ form: formKey, en, translation });
+      }
+    }
+    for (const item of Array.isArray(parsed.examples) ? parsed.examples : []) {
+      if (examples.length >= 2) break;
+      const en = englishLineFromItem(item);
+      const translation = russianLineFromItem(item);
+      if (en && translation) {
+        examples.push({ form: formKey, en, translation });
+      }
+    }
+    if (examples.length) {
+      return JSON.stringify({ examples: examples.slice(0, 2) }, null, 2);
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+function irregularVerbSingleFormFormatSample(locale, formKey) {
+  let raw;
+  try {
+    raw = readLocaleFile(locale, 'irregular-verb-examples-format-sample.json');
+  } catch {
+    const fromVerbPack = irregularVerbSampleFromVerbPack(locale, formKey);
+    if (fromVerbPack) return fromVerbPack;
+    raw = readLocaleFile('ru', 'irregular-verb-examples-format-sample.json');
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const examples = (Array.isArray(parsed?.examples) ? parsed.examples : []).filter(
+      (item) => String(item?.form ?? '') === formKey,
+    );
+    return JSON.stringify({ examples: examples.slice(0, 2) }, null, 2);
+  } catch {
+    return raw.trim();
+  }
+}
+
+/** Один запрос LLM: {{EXAMPLES_PER_FORM}} примеров одной формы глагола. */
+export function loadIrregularVerbExamplesSingleFormPrompt(locale, { formKey, ...extraVars } = {}) {
+  const localeVars = templateVarsFromLocale(locale);
+  const labelKey = IRREGULAR_FORM_LABEL_KEYS[formKey];
+  const formLabel = labelKey ? localeVars[labelKey] : formKey;
+  return fillTemplate(readTemplate('irregular-verb-examples-single-form.template.txt'), {
+    ...localeVars,
+    FORMAT_SAMPLE: irregularVerbSingleFormFormatSample(locale, formKey),
+    FORM_KEY: formKey,
+    FORM_LABEL: formLabel,
+    ...extraVars,
+  });
 }
 
 export function listPromptLocaleStatus() {

@@ -1,9 +1,9 @@
 /** Free-tier batch limits: usage since last rewarded ad (no daily reset). */
 export const FREE_WORDS_BATCH = 2;
-/** One rewarded video unlocks this many practice turns. */
-export const FREE_PRACTICE_BATCH = 2;
+/** User replies per batch before rewarded ad (4th reply needs ad when batch = 3). */
+export const FREE_PRACTICE_BATCH = 3;
 export const FREE_WORDS_PER_AD = 2;
-export const FREE_PRACTICE_PER_AD = 2;
+export const FREE_PRACTICE_PER_AD = 3;
 
 /** @deprecated alias */
 export const FREE_WORDS_BASE = FREE_WORDS_BATCH;

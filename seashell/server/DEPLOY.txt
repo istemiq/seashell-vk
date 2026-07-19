@@ -1,50 +1,13 @@
-Деплой API (словарь + GigaChat + PostgreSQL) на бесплатный/дёшевый хост
-================================================================
+Деплой API (словарь + LLM + PostgreSQL) на бесплатный/дёшевый хост
 
-Важно:
-- VK Hosting отдаёт только ФРОНТ (папка build). API — отдельный сервис.
-- После выкладки API нужно пересобрать фронт с адресом API:
-  set VITE_API_URL=https://ВАШ-API-ХОСТ
-  npm run build
-  npm run deploy
+Минимум в server/.env:
+- DATABASE_URL
+- LLM_PROVIDER (deepseek или openrouter)
+- DEEPSEEK_API_KEY или OPENROUTER_API_KEY
+- VK_APP_SECRET или TELEGRAM_BOT_TOKEN
+- CORS_ORIGINS
 
-Переменные окружения на сервере:
-- DATABASE_URL — строка подключения PostgreSQL (обязательно)
-- GIGACHAT_API_KEY
-- GIGACHAT_MODEL_NAME (например GigaChat-Max)
-- PORT (часто задаёт хостинг сам)
-
-------------------------------------------------------------
-Вариант A — Render.com (Docker) + внешняя БД
-------------------------------------------------------------
-1. Создай managed PostgreSQL (Render / Neon / Supabase и т.п.), скопируй DATABASE_URL.
-2. Web Service из репозитория: Root seashell/server, Docker.
-3. Env: DATABASE_URL, GIGACHAT_API_KEY, …
-4. URL API — подставь в VITE_API_URL при сборке фронта.
-
-------------------------------------------------------------
-Вариант B — Fly.io
-------------------------------------------------------------
-fly launch в папке server; для БД — Fly Postgres или внешний DATABASE_URL.
-
-------------------------------------------------------------
-Вариант C — VPS (Oracle Free / Hetzner / Timeweb)
-------------------------------------------------------------
-Установить Node 22+, PostgreSQL, npm install в папке server, systemd unit,
-nginx reverse proxy + HTTPS (Let's Encrypt).
-
-------------------------------------------------------------
-Вариант D — Docker Compose (локально: Postgres + API + Vite)
-------------------------------------------------------------
-Из папки seashell:
-1. Скопируй server/.env.example → server/.env, впиши GIGACHAT_API_KEY.
-2. docker compose up --build   или: npm run compose
-3. Браузер: http://localhost:5173   API: http://localhost:3001
-   Сервис api получает DATABASE_URL на контейнер db автоматически из compose.
-
-Локально без Docker: подними PostgreSQL, задай DATABASE_URL в server/.env, затем npm run api из seashell.
-
-------------------------------------------------------------
-Проверка
-------------------------------------------------------------
-GET https://ВАШ-API/api/health  → {"ok":true}
+Кратко:
+1. Скопируй server/.env.example → server/.env
+2. Заполни ключи LLM и DATABASE_URL
+3. node index.js или pm2

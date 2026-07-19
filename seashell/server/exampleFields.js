@@ -1,7 +1,7 @@
 /**
- * Нормализация полей из JSON ответа GigaChat для словаря.
+ * Нормализация полей из JSON ответа LLM для словаря.
  * Иногда модель кладёт вложенный объект вместо строки — вытаскиваем текст из вложенных ключей.
- * Используется в `db.js` при вставке примеров и в `gigachat.js` при разборе массива примеров.
+ * Используется в `db.js` при вставке примеров и в `llmClient.js` при разборе массива примеров.
  */
 export function lineFromField(val) {
   if (val == null) return '';
@@ -131,10 +131,20 @@ function looksMostlyCyrillic(s) {
 export function splitTranslationTail(translation) {
   const raw = String(translation ?? '').trim();
   if (!raw) return { translation: '', noteRu: '' };
-  const m = raw.match(/^(.+?)\s*[\(\（]([^)\）]+)[\)\）]\s*$/);
-  if (!m) return { translation: raw, noteRu: '' };
-  const base = m[1].trim();
-  const note = m[2].trim();
-  if (!base) return { translation: raw, noteRu: '' };
-  return { translation: base, noteRu: note };
+
+  const paren = raw.match(/^(.+?)\s*[\(\（]([^)\）]+)[\)\）]\s*$/);
+  if (paren) {
+    const base = paren[1].trim();
+    const note = paren[2].trim();
+    if (base) return { translation: base, noteRu: note };
+  }
+
+  const dash = raw.match(/^(.+?)\s+[—–]\s+(.+)$/);
+  if (dash) {
+    const base = dash[1].trim();
+    const note = dash[2].trim();
+    if (base) return { translation: base, noteRu: note };
+  }
+
+  return { translation: raw, noteRu: '' };
 }

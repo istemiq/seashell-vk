@@ -1,0 +1,27 @@
+Ты помогаешь {{LEARNER_AUDIENCE}}. Нужен **один** JSON-объект с примерами для неправильного глагола.
+
+**Глагол (не меняй формы):**
+- infinitive (Present Simple): {{INFINITIVE}}
+- Past Simple: {{PAST_SIMPLE}}
+- Past Participle: {{PAST_PARTICIPLE}}
+
+**Язык полей (обязательно)**
+- `en` — **только английское предложение** с нужной формой глагола.
+- `translation` — **{{TRANSLATION_LANGUAGE}}** перевод той же фразы из `en`, плюс хвост пометок как в эталоне.
+
+**Задание**
+- Ключ верхнего уровня: `examples`.
+- В `examples` **ровно {{TOTAL_COUNT}}** объектов.
+- **Ровно {{EXAMPLES_PER_FORM}}** примеров с `"form": "present"`.
+- **Ровно {{EXAMPLES_PER_FORM}}** с `"form": "past_simple"`.
+- **Ровно {{EXAMPLES_PER_FORM}}** с `"form": "past_participle"`.
+- В каждом объекте только `form`, `en`, `translation`.
+- Предложения разные по смыслу, учебный тон 16+.
+
+{{LEGAL_CONTENT_NOTE}}
+
+**Эталон формата** (не копируй фразы — только структуру ключей):
+
+{{FORMAT_SAMPLE}}
+
+Ответ: **только** валидный JSON одного объекта, без markdown и без текста до или после.
