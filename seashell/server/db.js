@@ -9,7 +9,7 @@ import {
   stylisticNoteFromItem,
   normalizeVerbUsage,
 } from './exampleFields.js';
-import { MAX_CUSTOM_EXAMPLES, WORD_EXAMPLE_COUNT } from './dictionaryConstants.js';
+import { WORD_EXAMPLE_COUNT } from './dictionaryConstants.js';
 import { normalizeContentLocale } from './promptLocales.js';
 import { resolveLlmModel } from './llmProvider.js';
 
@@ -78,11 +78,6 @@ export async function initDb() {
 
   await pool.query(`ALTER TABLE words ADD COLUMN IF NOT EXISTS gloss_note_ru TEXT`);
   await pool.query(`ALTER TABLE examples ADD COLUMN IF NOT EXISTS note_ru TEXT`);
-  await pool.query(
-    `ALTER TABLE examples ADD COLUMN IF NOT EXISTS is_custom BOOLEAN NOT NULL DEFAULT FALSE`,
-  );
-  await pool.query(`ALTER TABLE examples ADD COLUMN IF NOT EXISTS created_at BIGINT`);
-  await pool.query(`UPDATE examples SET created_at = 0 WHERE created_at IS NULL`);
   await pool.query(`ALTER TABLE words ADD COLUMN IF NOT EXISTS verb_usage TEXT`);
   await pool.query(`ALTER TABLE words ADD COLUMN IF NOT EXISTS content_locale TEXT`);
   await pool.query(
@@ -95,10 +90,7 @@ export async function initDb() {
      ON words (vk_user_id, LOWER(word), content_locale)`,
   );
 
-  await pool.query(
-    'DELETE FROM examples WHERE idx >= $1 AND COALESCE(is_custom, FALSE) = FALSE',
-    [WORD_EXAMPLE_COUNT],
-  );
+  await pool.query('DELETE FROM examples WHERE idx >= $1', [WORD_EXAMPLE_COUNT]);
 
   await pool.query(`CREATE TABLE IF NOT EXISTS dictionary_generation_cache (
     cache_key TEXT PRIMARY KEY,
@@ -296,10 +288,7 @@ export async function findReusableWordGeneration(wordNorm) {
   if (!word) return null;
 
   const { rows: examples } = await pool.query(
-    `SELECT idx, text, translation, note_ru, is_custom
-     FROM examples
-     WHERE word_id = $1 AND COALESCE(is_custom, FALSE) = FALSE
-     ORDER BY idx ASC LIMIT $2`,
+    'SELECT idx, text, translation, note_ru FROM examples WHERE word_id = $1 ORDER BY idx ASC LIMIT $2',
     [word.id, WORD_EXAMPLE_COUNT],
   );
   return payloadFromWordRow(word, examples);
@@ -368,12 +357,8 @@ export async function getWordWithExamples(vkUserId, wordId) {
   const word = wRows[0];
   if (!word) return null;
   const { rows: examples } = await pool.query(
-    `SELECT idx, text, translation, note_ru, COALESCE(is_custom, FALSE) AS is_custom
-     FROM examples
-     WHERE word_id = $1
-     ORDER BY idx ASC
-     LIMIT $2`,
-    [word.id, WORD_EXAMPLE_COUNT + MAX_CUSTOM_EXAMPLES],
+    'SELECT idx, text, translation, note_ru FROM examples WHERE word_id = $1 ORDER BY idx ASC LIMIT $2',
+    [word.id, WORD_EXAMPLE_COUNT],
   );
   const { rows: setRows } = await pool.query(
     `SELECT wsi.set_id
@@ -458,10 +443,7 @@ export async function replaceExamplesForWord(vkUserId, wordId, payload) {
       word.id,
       vkUserId,
     ]);
-    await client.query(
-      'DELETE FROM examples WHERE word_id = $1 AND COALESCE(is_custom, FALSE) = FALSE',
-      [word.id],
-    );
+    await client.query('DELETE FROM examples WHERE word_id = $1', [word.id]);
     for (let idx = 0; idx < examplesIn.length; idx++) {
       const ex = examplesIn[idx];
       const text = englishLineFromItem(ex);
@@ -483,49 +465,6 @@ export async function replaceExamplesForWord(vkUserId, wordId, payload) {
   }
 }
 
-/** Пользовательский пример: родная фраза → английское предложение с headword. */
-export async function insertCustomExample(vkUserId, wordId, { text, translation }) {
-  const en = String(text ?? '').trim();
-  const tr = String(translation ?? '').trim();
-  if (!en || !tr) {
-    throw new Error('Invalid custom example payload');
-  }
-
-  const { rows } = await pool.query(
-    'SELECT id FROM words WHERE id = $1 AND vk_user_id = $2',
-    [wordId, vkUserId],
-  );
-  const word = rows[0];
-  if (!word) return null;
-
-  const { rows: countRows } = await pool.query(
-    `SELECT COUNT(*)::int AS n FROM examples WHERE word_id = $1 AND COALESCE(is_custom, FALSE) = TRUE`,
-    [word.id],
-  );
-  const customCount = Number(countRows[0]?.n ?? 0);
-  if (customCount >= MAX_CUSTOM_EXAMPLES) {
-    const err = new Error('Custom example limit reached');
-    err.code = 'CUSTOM_EXAMPLE_LIMIT';
-    throw err;
-  }
-
-  const { rows: idxRows } = await pool.query(
-    `SELECT COALESCE(MAX(idx), $2 - 1) + 1 AS next_idx
-     FROM examples
-     WHERE word_id = $1 AND idx >= $2`,
-    [word.id, WORD_EXAMPLE_COUNT],
-  );
-  const nextIdx = Number(idxRows[0]?.next_idx ?? WORD_EXAMPLE_COUNT);
-
-  await pool.query(
-    `INSERT INTO examples (word_id, idx, text, translation, note_ru, is_custom, created_at)
-     VALUES ($1, $2, $3, $4, NULL, TRUE, $5)`,
-    [word.id, nextIdx, en, tr, Date.now()],
-  );
-
-  return getWordWithExamples(vkUserId, word.id);
-}
-
 export async function deleteWord(vkUserId, wordId) {
   const r = await pool.query('DELETE FROM words WHERE id = $1 AND vk_user_id = $2', [wordId, vkUserId]);
   return r.rowCount > 0;
@@ -545,29 +484,6 @@ export async function countWordsSince(vkUserId, sinceMs) {
     [vkUserId, sinceMs],
   );
   return Number(rows[0]?.n ?? 0);
-}
-
-/** Пользовательские примеры (LLM) с последней rewarded-рекламы — в общую квоту words. */
-export async function countCustomExamplesSince(vkUserId, sinceMs) {
-  const { rows } = await pool.query(
-    `SELECT COUNT(*)::int AS n
-     FROM examples e
-     JOIN words w ON w.id = e.word_id
-     WHERE w.vk_user_id = $1
-       AND COALESCE(e.is_custom, FALSE) = TRUE
-       AND COALESCE(e.created_at, 0) > $2`,
-    [vkUserId, sinceMs],
-  );
-  return Number(rows[0]?.n ?? 0);
-}
-
-/** Слова + «мои примеры» с последней rewarded-рекламы. */
-export async function countWordQuotaUsageSince(vkUserId, sinceMs) {
-  const [words, customExamples] = await Promise.all([
-    countWordsSince(vkUserId, sinceMs),
-    countCustomExamplesSince(vkUserId, sinceMs),
-  ]);
-  return words + customExamples;
 }
 
 /** @deprecated use countWordsSince with getLastAdViewTime */

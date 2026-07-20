@@ -1,9 +1,6 @@
 /** Сколько примеров храним и показываем на слово (промпт, LLM, БД). */
 export const WORD_EXAMPLE_COUNT = 10;
 
-/** Сколько пользовательских примеров можно добавить к одной карточке. */
-export const MAX_CUSTOM_EXAMPLES = 50;
-
 /** Три формы неправильного глагола в карточке (verbUsage). */
 export const VERB_USAGE_COUNT = 3;
 
