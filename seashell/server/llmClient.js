@@ -38,6 +38,7 @@ import {
   loadPracticeWordTurnPrompt,
   loadWordExamplesUserPrompt,
   loadIrregularVerbExamplesSingleFormPrompt,
+  loadWordCustomExamplePrompt,
   listPromptLocaleStatus,
 } from './promptLoader.js';
 import {
@@ -418,6 +419,76 @@ export async function generateWordExamples(word, { contentLocale, avoidExamples 
   }
 
   throw lastErr instanceof Error ? lastErr : new Error('Wrong translation language from model');
+}
+
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function exampleUsesHeadword(headword, text) {
+  const hw = String(headword ?? '').trim();
+  const en = String(text ?? '').trim();
+  if (!hw || !en) return false;
+  const parts = hw.split(/\s+/).filter(Boolean);
+  return parts.every((part) => new RegExp(`\\b${escapeRegex(part)}\\w*\\b`, 'i').test(en));
+}
+
+const CUSTOM_EXAMPLE_SYSTEM_PROMPT =
+  'You output only valid JSON when asked. No markdown fences. Single object with key "text" — one natural English sentence.';
+
+/** Перевод родной фразы ученика в естественное английское предложение с headword. */
+export async function generateCustomWordExample(headword, nativeText, { contentLocale } = {}) {
+  const locale = normalizeContentLocale(contentLocale);
+  const hw = String(headword ?? '').trim();
+  const native = String(nativeText ?? '').trim();
+  if (!hw || !native) {
+    throw new Error('Invalid custom example input');
+  }
+
+  const userContent = loadWordCustomExamplePrompt(locale, { headword: hw, nativeText: native });
+  let lastErr;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const retryNote =
+      attempt > 0
+        ? '\n\nПредыдущий ответ не подошёл: нужен валидный JSON с ключом text — одно английское предложение, обязательно со словом «' +
+          hw +
+          '».'
+        : '';
+    const content = await llmChatCompletion({
+      messages: [
+        { role: 'system', content: CUSTOM_EXAMPLE_SYSTEM_PROMPT },
+        { role: 'user', content: userContent + retryNote },
+      ],
+      temperature: Math.min(0.65, wordExamplesTemperature() + attempt * 0.08),
+      max_tokens: 400,
+    });
+
+    try {
+      const parsed = extractJsonObject(content);
+      let text = englishLineFromItem(parsed);
+      if (
+        text &&
+        looksMostlyCyrillic(text) &&
+        !looksMostlyCyrillic(native) &&
+        /[A-Za-z]{2,}/.test(native)
+      ) {
+        text = '';
+      }
+      if (!text || looksMostlyCyrillic(text)) {
+        throw new Error('Model returned non-English text');
+      }
+      if (!exampleUsesHeadword(hw, text)) {
+        throw new Error('Headword missing in custom example');
+      }
+      return { text: text.trim(), translation: native };
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[llm] custom example ${locale}, attempt ${attempt + 1}/3`, e?.message);
+    }
+  }
+
+  throw lastErr instanceof Error ? lastErr : new Error('Failed to generate custom example');
 }
 
 const IRREGULAR_FORM_KEYS = ['present', 'past_simple', 'past_participle'];

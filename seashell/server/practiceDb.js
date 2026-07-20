@@ -97,9 +97,14 @@ export async function listPracticeSessions(vkUserId, { mode } = {}) {
   const params = [vkUserId, PRACTICE_MAX_SESSIONS_LIST];
   let sql = `SELECT s.id, s.mode, s.expert_id, s.target_word_id, s.content_locale, s.dialogue_summary, s.created_at, s.updated_at,
       (SELECT COUNT(*)::int FROM practice_messages m WHERE m.session_id = s.id) AS message_count,
+      (SELECT COUNT(*)::int FROM practice_messages m WHERE m.session_id = s.id AND m.is_opening = FALSE) AS user_turn_count,
       (SELECT reply FROM practice_messages m WHERE m.session_id = s.id ORDER BY seq DESC LIMIT 1) AS last_preview
      FROM practice_sessions s
-     WHERE s.vk_user_id = $1`;
+     WHERE s.vk_user_id = $1
+       AND EXISTS (
+         SELECT 1 FROM practice_messages m
+         WHERE m.session_id = s.id AND m.is_opening = FALSE
+       )`;
   if (mode === 'free' || mode === 'expert' || mode === 'word') {
     sql += ` AND s.mode = $3`;
     params.push(mode);
@@ -107,6 +112,32 @@ export async function listPracticeSessions(vkUserId, { mode } = {}) {
   sql += ` ORDER BY s.updated_at DESC LIMIT $2`;
   const r = await pool().query(sql, params);
   return r.rows;
+}
+
+export async function deletePracticeSession(vkUserId, sessionId) {
+  const r = await pool().query(
+    `DELETE FROM practice_sessions WHERE id = $1 AND vk_user_id = $2 RETURNING id`,
+    [sessionId, vkUserId],
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
+/** One-off maintenance: remove all stored practice dialogues. */
+export async function purgeAllPracticeSessions() {
+  const r = await pool().query(`DELETE FROM practice_sessions`);
+  return r.rowCount ?? 0;
+}
+
+/** Remove sessions that only have the bot opening line (no user messages). */
+export async function purgeEmptyPracticeSessions() {
+  const r = await pool().query(
+    `DELETE FROM practice_sessions s
+     WHERE NOT EXISTS (
+       SELECT 1 FROM practice_messages m
+       WHERE m.session_id = s.id AND m.is_opening = FALSE
+     )`,
+  );
+  return r.rowCount ?? 0;
 }
 
 export async function listPracticeMessages(sessionId) {

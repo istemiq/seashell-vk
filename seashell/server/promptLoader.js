@@ -195,6 +195,15 @@ export function loadIrregularVerbExamplesSingleFormPrompt(locale, { formKey, ...
   });
 }
 
+/** Пользовательский пример: родная фраза → естественное английское с headword. */
+export function loadWordCustomExamplePrompt(locale, { headword, nativeText }) {
+  return fillTemplate(readTemplate('word-custom-example.template.txt'), {
+    ...templateVarsFromLocale(locale),
+    HEADWORD: String(headword ?? '').trim(),
+    NATIVE_TEXT: String(nativeText ?? '').trim().slice(0, 2000),
+  });
+}
+
 export function listPromptLocaleStatus() {
   const codes = fs.existsSync(LOCALES_DIR)
     ? fs.readdirSync(LOCALES_DIR).filter((d) => fs.statSync(path.join(LOCALES_DIR, d)).isDirectory())

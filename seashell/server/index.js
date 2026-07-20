@@ -19,6 +19,7 @@ import {
   getCachedWordGeneration,
   insertWordWithExamples,
   replaceExamplesForWord,
+  insertCustomExample,
   deleteWord,
   findWordByLemma,
   saveCachedWordGeneration,
@@ -27,7 +28,7 @@ import {
   renameSet,
   deleteSetAndOrphanWords,
   replaceWordSets,
-  countWordsSince,
+  countWordQuotaUsageSince,
   getLastAdViewTime,
   countAdViewsTotal,
   resetUserQuotaForAdmin,
@@ -35,6 +36,7 @@ import {
 } from './db.js';
 import {
   generateWordExamples,
+  generateCustomWordExample,
   generateIrregularVerbExamples,
   resolveHeadwordEnQuick,
   logDictionaryPromptStartupInfo,
@@ -47,7 +49,12 @@ import {
   runFreePracticeTurn,
   runWordPracticeTurn,
 } from './practiceService.js';
-import { listPracticeSessions, countPracticeTurnsSince } from './practiceDb.js';
+import {
+  listPracticeSessions,
+  countPracticeTurnsSince,
+  deletePracticeSession,
+  purgeAllPracticeSessions,
+} from './practiceDb.js';
 import {
   QUOTA_LIMIT_ERROR,
   FREE_WORDS_PER_AD,
@@ -88,6 +95,7 @@ function mapPracticeSessionRow(row) {
     updatedAt: row.updated_at,
     createdAt: row.created_at,
     messageCount: row.message_count ?? 0,
+    userTurnCount: row.user_turn_count ?? 0,
     lastPreview: row.last_preview ?? null,
   };
 }
@@ -103,7 +111,7 @@ function isAppAdmin(vkUserId) {
 async function getWordsQuotaStatus(vkUserId) {
   const since = await getLastAdViewTime(vkUserId, 'words');
   const [used, adViews] = await Promise.all([
-    countWordsSince(vkUserId, since),
+    countWordQuotaUsageSince(vkUserId, since),
     countAdViewsTotal(vkUserId, 'words'),
   ]);
   return {
@@ -728,6 +736,21 @@ app.get('/api/practice/sessions/:id', async (req, res) => {
   }
 });
 
+app.delete('/api/practice/sessions/:id', async (req, res) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid session id' });
+  }
+  try {
+    const ok = await deletePracticeSession(req.vkUserId, id);
+    if (!ok) return res.status(404).json({ error: 'Session not found' });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    respondDatabaseError(res, e);
+  }
+});
+
 app.get('/api/practice/experts', (req, res) => {
   res.json({ experts: listPracticeExpertsForUi(resolveUiLocale(req)) });
 });
@@ -994,7 +1017,10 @@ async function handleRefreshExamples(req, res) {
     const pol = assertAllowedUserContent(row.word);
     if (!pol.ok) return res.status(400).json({ error: pol.error });
     const contentLocale = resolveContentLocale(req);
-    const previousTexts = (row.examples || []).map((ex) => ex.text).filter(Boolean);
+    const previousTexts = (row.examples || [])
+      .filter((ex) => !ex.is_custom)
+      .map((ex) => ex.text)
+      .filter(Boolean);
     const generated = await enqueueLlm(
       () => generateWordExamples(row.word, { contentLocale, avoidExamples: previousTexts }),
       {
@@ -1021,6 +1047,55 @@ async function handleRefreshExamples(req, res) {
 /** Два URL: короткий — для совместимости; длинный — как в REST. */
 app.post('/api/refresh-examples', limitGeneration, handleRefreshExamples);
 app.post('/api/words/:id/refresh-examples', limitGeneration, handleRefreshExamples);
+
+app.post('/api/words/:id/custom-examples', limitGeneration, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid word id' });
+  }
+  const nativeText = String(req.body?.nativeText ?? req.body?.text ?? '').trim();
+  if (!nativeText || nativeText.length > 2000) {
+    return res.status(400).json({ error: 'Invalid native text' });
+  }
+  const pol = assertAllowedUserContent(nativeText);
+  if (!pol.ok) return res.status(400).json({ error: pol.error });
+
+  let accessMode;
+  try {
+    const quota = await getWordsQuotaStatus(req.vkUserId);
+    accessMode = await assertWordsAccess(req, res, quota);
+    if (!accessMode) return;
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'Failed to check limits' });
+  }
+
+  try {
+    const row = await getWordWithExamples(req.vkUserId, id);
+    if (!row) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const contentLocale = resolveContentLocale(req);
+    const generated = await enqueueLlm(
+      () => generateCustomWordExample(row.word, nativeText, { contentLocale }),
+      { label: `dictionary-custom:${row.word}` },
+    );
+    const saved = await insertCustomExample(req.vkUserId, id, generated);
+    if (!saved) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    if (accessMode === 'credits') {
+      await chargeWordCredit(req.vkUserId);
+    }
+    res.status(201).json(saved);
+  } catch (e) {
+    if (e?.code === 'CUSTOM_EXAMPLE_LIMIT') {
+      return res.status(429).json({ error: 'Custom example limit reached' });
+    }
+    console.error(e);
+    sendGenerationError(res, req, e);
+  }
+});
 
 async function irregularVerbExamplesPayload(verbId, contentLocale) {
   const mixed = await getMixedIrregularVerbExamples(verbId, contentLocale);
@@ -1201,6 +1276,10 @@ app.delete('/api/words/:id', async (req, res) => {
 async function start() {
   await initDb();
   logDictionaryPromptStartupInfo();
+  if (String(process.env.PURGE_PRACTICE_HISTORY_ONCE ?? '').trim() === '1') {
+    const n = await purgeAllPracticeSessions();
+    console.log(`[practice] Purged ${n} stored sessions (PURGE_PRACTICE_HISTORY_ONCE=1)`);
+  }
   if (
     String(process.env.NODE_ENV ?? '').toLowerCase() === 'production' &&
     !String(process.env.VK_APP_SECRET ?? '').trim() &&
